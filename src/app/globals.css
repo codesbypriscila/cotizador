@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/* Tokens from the approved design (cotizador.pen · 0 Sistema de diseño) */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-ink: #0e0f12;
+  --color-ink-2: #3a3d44;
+  --color-muted: #8a8f98;
+  --color-line: #ecedf0;
+  --color-chip: #ecedf0;
+  --color-accent: #4a90f7;
+  --color-accent-soft: #eaf2fe;
+  --color-accent-ink: #2c6fd8;
+  --color-nav-idle: #9da1a8;
+
+  --shadow-card: 0 8px 28px rgb(14 15 18 / 0.05);
+  --shadow-float: 0 12px 30px rgb(14 15 18 / 0.25);
+  --shadow-fab: 0 10px 24px rgb(74 144 247 / 0.33);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-bg text-ink antialiased;
+  }
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@utility card {
+  @apply rounded-3xl bg-surface shadow-card;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

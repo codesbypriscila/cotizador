@@ -1,0 +1,173 @@
+// Cotizador database schema.
+// Every amount (prices, totals, payments) is stored in US dollar cents (Int).
+// Pesos are only a display: amount × Settings.dopRate, refreshed every 6 hours.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CatalogKind {
+  PROJECT // project type (web page, online store, …)
+  EXTRA // add-on (extra pages, bookings, …)
+}
+
+enum PriceUnit {
+  ONCE // one-time price
+  EACH // per unit, the client picks a quantity
+  MONTHLY // recurring, shown apart from the total
+}
+
+enum Currency {
+  USD
+  DOP
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+enum QuoteSource {
+  PUBLIC // came in from the public quote builder
+  ADMIN // created by hand in the admin
+}
+
+/// Single-row table with the business settings.
+model Settings {
+  id              Int       @id @default(1)
+  whatsapp        String // digits only, with country code, e.g. 18090000000
+  dopRate         Float     @default(60) // pesos per US$1, from the exchange API
+  rateUpdatedAt   DateTime? // when dopRate last changed
+  rateCheckedAt   DateTime? // last attempt, so a failing API is not hit on every request
+  rateSource      String    @default("")
+  messageTemplate String
+  businessName    String
+  taxId           String    @default("")
+  ownerName       String
+  ownerRole       String
+  portfolioUrl    String    @default("")
+}
+
+model CatalogItem {
+  id          String      @id @default(cuid())
+  kind        CatalogKind
+  name        String
+  description String      @default("")
+  icon        String // lucide icon name
+  price       Int // base price in USD cents, used by the public quote builder
+  minPrice    Int // market range in USD cents, reference only
+  maxPrice    Int
+  unit        PriceUnit   @default(ONCE)
+  visible     Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([kind, sortOrder])
+}
+
+model Client {
+  id        String    @id @default(cuid())
+  name      String // business or person name
+  contact   String    @default("") // contact person
+  phone     String    @default("")
+  email     String    @default("")
+  notes     String    @default("")
+  createdAt DateTime  @default(now())
+  quotes    Quote[]
+  invoices  Invoice[]
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  number      Int         @unique @default(autoincrement())
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String // short project description, e.g. "Página web + reservas"
+  status      QuoteStatus @default(DRAFT)
+  source      QuoteSource @default(ADMIN)
+  discountPct Int         @default(0)
+  applyTax    Boolean     @default(false) // ITBIS 18%
+  urgent      Boolean     @default(false)
+  currency    Currency    @default(USD) // currency the client chose in the public builder
+  notes       String      @default("")
+  validUntil  DateTime?
+  seenAt      DateTime? // when the admin opened a public proposal
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  items       QuoteItem[]
+  invoice     Invoice?
+
+  @@index([status])
+}
+
+model QuoteItem {
+  id          String    @id @default(cuid())
+  quoteId     String
+  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  name        String
+  description String    @default("")
+  icon        String    @default("circle")
+  quantity    Int       @default(1)
+  unitPrice   Int
+  unit        PriceUnit @default(ONCE)
+  sortOrder   Int       @default(0)
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  number      Int           @unique @default(autoincrement())
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  quoteId     String?       @unique
+  quote       Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  title       String
+  sent        Boolean       @default(false) // false = draft
+  discountPct Int           @default(0)
+  applyTax    Boolean       @default(false)
+  issuedAt    DateTime      @default(now())
+  dueAt       DateTime
+  notes       String        @default("")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  items       InvoiceItem[]
+  payments    Payment[]
+}
+
+model InvoiceItem {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String    @default("")
+  icon        String    @default("circle")
+  quantity    Int       @default(1)
+  unitPrice   Int
+  unit        PriceUnit @default(ONCE)
+  sortOrder   Int       @default(0)
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Int
+  paidAt    DateTime @default(now())
+  method    String   @default("Transferencia")
+  note      String   @default("")
+}
+
+/// The single admin account. The password is stored as a scrypt hash, never in plain text.
+model Admin {
+  id           Int      @id @default(1)
+  email        String   @unique
+  passwordHash String
+  updatedAt    DateTime @updatedAt
+}
