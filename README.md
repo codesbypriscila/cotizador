@@ -4,6 +4,8 @@
 Tus clientes arman su proyecto, ven el precio al instante en US$ o RD$ y te lo envían por WhatsApp.
 Tú lo conviertes en cotización, factura y abonos desde un panel privado.
 
+**Pruébalo:** [cotizador-priscila.vercel.app](https://cotizador-priscila.vercel.app)
+
 [![CI](https://github.com/codesbypriscila/cotizador/actions/workflows/ci.yml/badge.svg)](https://github.com/codesbypriscila/cotizador/actions/workflows/ci.yml)
 ![Next.js](https://img.shields.io/badge/Next.js-16-000?logo=nextdotjs)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
