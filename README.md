@@ -1,7 +1,3 @@
-<div align="center">
-
-<img src="src/app/icon.svg" width="72" alt="Logo del cotizador" />
-
 # Cotizador
 
 **Cotizaciones, facturas y cobros para freelancers de desarrollo de software.**
