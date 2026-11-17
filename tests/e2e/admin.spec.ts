@@ -199,7 +199,7 @@ test.describe("flujo completo del admin", () => {
     await expect(page.getByText("SEO básico")).toHaveCount(0);
   });
 
-  test("ajustes: el WhatsApp guardado es el que usa el cotizador", async ({ page }) => {
+  test("ajustes: guarda tu WhatsApp y el cotizador envía a tu correo", async ({ page }) => {
     await page.goto("/admin/ajustes");
     await expect(page.getByText(/US\$1 = RD\$\d+\.\d{2}/)).toBeVisible();
     const field = page.locator('input[name="whatsapp"]');
@@ -210,10 +210,9 @@ test.describe("flujo completo del admin", () => {
 
     await page.goto("/");
     await page.getByRole("button", { name: /Landing page/ }).click();
-    await page.getByPlaceholder("Ej.: Laura Méndez").fill("X");
-    await expect(page.locator("aside").getByRole("link", { name: "Enviar propuesta por WhatsApp" })).toHaveAttribute(
+    await expect(page.locator("aside").last().getByRole("link", { name: "Enviar cotización por correo" })).toHaveAttribute(
       "href",
-      /^https:\/\/wa\.me\/19089060000\?/,
+      /^mailto:admin@prueba\.test\?subject=Cotizaci%C3%B3n%3A%20Landing%20page&body=/,
     );
 
     await page.goto("/admin/ajustes");

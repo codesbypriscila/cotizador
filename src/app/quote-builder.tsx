@@ -1,14 +1,15 @@
 "use client";
 
-import { ArrowRight, Check, ChevronLeft, Info, MessageCircle, Minus, Plus } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, Copy, Info, Mail, Minus, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CatalogIcon } from "@/components/icon";
-import { buttonClass, Chip, cx, inputClass, Toggle } from "@/components/ui";
 import { ProfilePhoto } from "@/components/profile-photo";
+import { buttonClass, Chip, cx, inputClass, Toggle } from "@/components/ui";
+import { mailtoLink } from "@/lib/mail";
 import { type Currency, formatDOP, formatIn, formatRate, formatUSD } from "@/lib/money";
 import { computeTotals } from "@/lib/totals";
-import { businessNameError, personNameError, tidy } from "@/lib/validation";
-import { fillTemplate, whatsappLink } from "@/lib/whatsapp";
+import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
+import { fillTemplate } from "@/lib/whatsapp";
 import { submitProposal } from "./actions";
 
 export type BuilderItem = {
@@ -21,7 +22,7 @@ export type BuilderItem = {
 };
 
 type Settings = {
-  whatsapp: string;
+  email: string; // where the quotes arrive
   rate: number; // pesos per US$1, refreshed every 6 hours
   template: string;
   ownerName: string;
@@ -30,6 +31,21 @@ type Settings = {
 };
 
 type Step = 1 | 2 | 3;
+type FieldKey = "name" | "business" | "email" | "phone";
+type SentEmail = { to: string; subject: string; body: string; phone: string };
+
+const STEPS: { n: Step; title: string; short: string }[] = [
+  { n: 1, title: "¿Qué quieres crear?", short: "Proyecto" },
+  { n: 2, title: "Agrega extras", short: "Extras" },
+  { n: 3, title: "Tus datos", short: "Tus datos" },
+];
+
+const FIELD_ORDER: { key: FieldKey; id: string }[] = [
+  { key: "name", id: "cliente-nombre" },
+  { key: "business", id: "cliente-negocio" },
+  { key: "email", id: "cliente-correo" },
+  { key: "phone", id: "cliente-telefono" },
+];
 
 export function QuoteBuilder({
   projects,
@@ -41,19 +57,19 @@ export function QuoteBuilder({
   settings: Settings;
 }) {
   const [step, setStep] = useState<Step>(1);
-  const [sentMessage, setSentMessage] = useState<string | null>(null);
+  const [sent, setSent] = useState<SentEmail | null>(null);
   const [currency, setCurrency] = useState<Currency>("DOP");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [name, setName] = useState("");
   const [business, setBusiness] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [urgent, setUrgent] = useState(false);
   const [note, setNote] = useState("");
   const [website, setWebsite] = useState(""); // honeypot
   const [showErrors, setShowErrors] = useState(false);
-  const [touched, setTouched] = useState<{ name?: boolean; business?: boolean }>({});
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
 
   const project = projects.find((p) => p.id === projectId) ?? null;
   const chosenExtras = extras.filter((e) => (qty[e.id] ?? 0) > 0);
@@ -72,13 +88,25 @@ export function QuoteBuilder({
   );
 
   const countable = chosenExtras.filter((e) => e.unit !== "MONTHLY").length;
-  const totalLabel = countable ? `Total estimado · ${countable} ${countable === 1 ? "extra" : "extras"}` : "Total estimado";
+  const extrasLabel = countable ? `${countable} ${countable === 1 ? "extra" : "extras"}` : "";
 
-  const message = useMemo(() => {
+  const errors: Record<FieldKey, string | null> = {
+    name: personNameError(name),
+    business: businessNameError(business),
+    email: email.trim() ? emailError(email) : "Escribe tu correo.",
+    phone: phoneError(phone, { required: true }),
+  };
+  const formValid = Object.values(errors).every((e) => !e);
+  const canSend = Boolean(project && formValid);
+  const fieldError = (k: FieldKey) => ((showErrors || touched[k]) && errors[k]) || null;
+  const touch = (k: FieldKey) => () => setTouched((t) => ({ ...t, [k]: true }));
+
+  // The email the client sends: the quote, their contact details and what happens next.
+  const outgoing = useMemo(() => {
     const monthly = chosenExtras.filter((e) => e.unit === "MONTHLY");
     const extraLine = (e: BuilderItem) =>
       e.unit === "EACH" ? `${e.name} ×${qty[e.id]} — ${money(e.price * qty[e.id])}` : `${e.name} — ${money(e.price)}`;
-    return fillTemplate(settings.template, {
+    const quote = fillTemplate(settings.template, {
       cliente: tidy(name) || "(tu nombre)",
       negocio: tidy(business),
       proyecto: project ? `${project.name} — ${money(project.price)}` : "",
@@ -91,14 +119,13 @@ export function QuoteBuilder({
       mensual: monthly.map((e) => `🔧 ${e.name}: ${money(e.price)}/mes (aparte)`).join("\n"),
       nota: note,
     });
+    const contact = [`Correo: ${email.trim()}`, `WhatsApp: ${phone.trim()}`].join("\n");
+    const subject = `Cotización: ${project?.name ?? "proyecto"}${tidy(business) ? ` — ${tidy(business)}` : ""}`;
+    return { to: settings.email, subject, body: `${quote}\n\nMis datos:\n${contact}` };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- money() only depends on currency and rate
-  }, [settings, name, business, project, chosenExtras, qty, urgent, totals.total, currency, note]);
+  }, [settings, name, business, email, phone, project, chosenExtras, qty, urgent, totals.total, currency, note]);
 
-  const link = whatsappLink(settings.whatsapp, message);
-  const errors = { name: personNameError(name), business: businessNameError(business) };
-  const formValid = !errors.name && !errors.business;
-  const canSend = Boolean(project && formValid);
-  const fieldError = (k: "name" | "business") => ((showErrors || touched[k]) && errors[k]) || null;
+  const mailto = mailtoLink(outgoing.to, outgoing);
 
   function go(next: Step) {
     setStep(next);
@@ -109,60 +136,43 @@ export function QuoteBuilder({
     setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(50, value)) }));
   }
 
-  async function onSend(e: React.MouseEvent<HTMLAnchorElement>) {
-    e.preventDefault();
-    setSendError(null);
+  /**
+   * The link itself opens the mail app (that is what makes the phone show its
+   * "New message" sheet). It is blocked until every required field is valid.
+   * The proposal is saved for the admin at the same time.
+   */
+  function onSend(e: React.MouseEvent<HTMLAnchorElement>) {
     if (!canSend || !project) {
-      // Nothing is sent and WhatsApp does not open until every required field is valid.
+      e.preventDefault();
       setShowErrors(true);
       if (!project) go(1);
       else {
         if (step !== 3) setStep(3);
-        requestAnimationFrame(() => document.getElementById(errors.name ? "cliente-nombre" : "cliente-negocio")?.focus());
+        const first = FIELD_ORDER.find((f) => errors[f.key]);
+        requestAnimationFrame(() => first && document.getElementById(first.id)?.focus());
       }
       return;
     }
-    if (sending) return;
-    setSending(true);
-    // Open the tab now (inside the click, so it is not blocked as a popup),
-    // save the proposal, then send that tab to WhatsApp. If the tab could not
-    // open (some phones), WhatsApp opens in this same tab after saving.
-    const tab = window.open("", "_blank");
-    if (tab) tab.opener = null;
-    let result: { ok: boolean; error?: string } | "timeout";
-    try {
-      result = await Promise.race([
-        submitProposal({
-          projectId: project.id,
-          extras: chosenExtras.map((x) => ({ id: x.id, quantity: qty[x.id] })),
-          name: tidy(name),
-          business: tidy(business),
-          urgent,
-          note,
-          website,
-          currency,
-        }),
-        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 6000)), // never keep the client waiting long
-      ]);
-    } catch {
-      result = { ok: false, error: "No se pudo enviar. Revisa tu conexión e inténtalo otra vez." };
-    } finally {
-      setSending(false);
-    }
-    if (result !== "timeout" && !result.ok) {
-      tab?.close();
-      setShowErrors(true);
-      setSendError(result.error ?? "Revisa los datos marcados en rojo.");
-      return;
-    }
-    setSentMessage(message);
+    submitProposal({
+      projectId: project.id,
+      extras: chosenExtras.map((x) => ({ id: x.id, quantity: qty[x.id] })),
+      name: tidy(name),
+      business: tidy(business),
+      email: email.trim(),
+      phone: phone.trim(),
+      urgent,
+      note,
+      website,
+      currency,
+    }).catch(() => {
+      // The email already carries the quote; the admin copy is a bonus.
+    });
+    setSent({ ...outgoing, phone: phone.trim() });
     window.scrollTo({ top: 0 });
-    if (tab) tab.location.href = link;
-    else window.location.href = link;
   }
 
   function reset() {
-    setSentMessage(null);
+    setSent(null);
     setProjectId(null);
     setQty({});
     setNote("");
@@ -170,6 +180,10 @@ export function QuoteBuilder({
     setShowErrors(false);
     go(1);
   }
+
+  const stepDone = (n: Step) => (n === 1 ? Boolean(project) : n === 2 ? step > 2 : formValid);
+  const stepValue = (n: Step) =>
+    n === 1 ? (project?.name ?? "Sin elegir") : n === 2 ? extrasLabel || "Ninguno" : tidy(name) || "Nombre, correo y WhatsApp";
 
   const summary = (
     <Summary
@@ -180,47 +194,85 @@ export function QuoteBuilder({
       urgent={urgent}
       currency={currency}
       rate={settings.rate}
-      link={link}
+      mailto={mailto}
       canSend={canSend}
       onSend={onSend}
-      sending={sending}
-      formError={sendError ?? (showErrors && !formValid ? "Completa los campos marcados con *." : null)}
+      formError={showErrors && !canSend ? (project ? "Completa los campos marcados con *." : "Elige un tipo de proyecto.") : null}
     />
   );
 
+  if (sent) {
+    return (
+      <div className="min-h-dvh w-full">
+        <Header settings={settings} currency={currency} onCurrency={setCurrency} />
+        <Sent email={sent} onReset={reset} />
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-[1440px]">
+    <div className="min-h-dvh w-full">
       <Header settings={settings} currency={currency} onCurrency={setCurrency} />
 
-      {sentMessage ? (
-        <Sent message={sentMessage} settings={settings} link={whatsappLink(settings.whatsapp, sentMessage)} onReset={reset} />
-      ) : (
-        <main className="px-5 pb-36 md:px-10 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:pb-16 xl:grid-cols-[minmax(0,1fr)_400px] xl:gap-8 xl:px-16">
-          <div className="flex min-w-0 flex-col gap-8">
-            {/* Hero */}
-            <section className={cx("flex flex-col gap-2.5 pt-2", step !== 1 && "max-lg:hidden")}>
-              <h1 className="text-[34px] leading-tight font-bold tracking-[-0.035em] lg:text-[44px] xl:text-[52px]">
-                Cotiza tu proyecto
-              </h1>
-              <p className="max-w-xl text-[15px] leading-relaxed text-muted lg:text-base">
-                Elige lo que necesitas y mira el precio al instante. Cuando termines, me llega por WhatsApp.
-              </p>
-            </section>
+      <main className="px-4 pb-32 md:px-8 lg:grid lg:grid-cols-[210px_minmax(0,1fr)_320px] lg:items-start lg:gap-8 lg:pb-12 xl:grid-cols-[240px_minmax(0,1fr)_360px] xl:gap-10 xl:px-10">
+        {/* Left: title and the three steps (computer) */}
+        <aside className="hidden flex-col gap-6 lg:sticky lg:top-6 lg:flex">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-[28px] leading-tight font-bold tracking-[-0.035em]">Cotiza tu proyecto</h1>
+            <p className="text-sm leading-relaxed text-muted">Elige lo que necesitas y mira el precio al instante.</p>
+          </div>
+          <nav aria-label="Pasos" className="flex flex-col gap-1">
+            {STEPS.map((s) => {
+              const active = s.n === step;
+              const done = s.n !== step && stepDone(s.n);
+              return (
+                <button
+                  key={s.n}
+                  type="button"
+                  aria-current={active ? "step" : undefined}
+                  disabled={s.n > 1 && !project}
+                  onClick={() => go(s.n)}
+                  className={cx(
+                    "flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors disabled:opacity-50",
+                    active ? "bg-surface shadow-card" : "hover:bg-surface/60",
+                  )}
+                >
+                  <span
+                    className={cx(
+                      "grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold",
+                      active ? "bg-ink text-white" : done ? "bg-accent text-white" : "bg-chip text-muted",
+                    )}
+                  >
+                    {done ? <Check size={14} strokeWidth={3} /> : s.n}
+                  </span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className={cx("text-sm", active ? "font-semibold" : "font-medium text-ink-2")}>{s.short}</span>
+                    <span className="truncate text-xs text-muted">{stepValue(s.n)}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-            {/* Step 1 · project type */}
-            <section className={cx("flex flex-col gap-4", step !== 1 && "max-lg:hidden")}>
-              <div className="flex flex-col gap-2.5 lg:hidden">
-                <div className="flex justify-between text-[13px]">
-                  <span className="font-semibold">Paso 1 de 3</span>
-                  <span className="text-muted">Tipo de proyecto</span>
-                </div>
-                <Progress step={1} />
-              </div>
-              <SectionTitle n={1} title="¿Qué quieres crear?" mobileClass="text-[19px] tracking-[-0.015em]" />
+        {/* Middle: the current step */}
+        <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
+          {step === 1 && (
+            <section className="flex flex-col gap-1.5 lg:hidden">
+              <h1 className="text-[26px] leading-tight font-bold tracking-[-0.035em]">Cotiza tu proyecto</h1>
+              <p className="text-sm leading-relaxed text-muted">Elige lo que necesitas y mira el precio al instante.</p>
+            </section>
+          )}
+
+          <MobileStepNav step={step} onBack={() => go((step - 1) as Step)} />
+          <h2 className="text-lg font-bold tracking-[-0.015em] lg:text-xl">{STEPS[step - 1].title}</h2>
+
+          {step === 1 && (
+            <section className="flex flex-col gap-3">
               {showErrors && !project && (
                 <p className="text-sm font-medium text-[#C53030]">Elige un tipo de proyecto para seguir.</p>
               )}
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-2 lg:gap-3 xl:grid-cols-3">
                 {projects.map((p) => {
                   const selected = p.id === projectId;
                   return (
@@ -230,25 +282,25 @@ export function QuoteBuilder({
                       aria-pressed={selected}
                       onClick={() => setProjectId(selected ? null : p.id)}
                       className={cx(
-                        "relative flex flex-col gap-3 rounded-[22px] border-2 bg-surface p-4 text-left shadow-card transition-colors",
+                        "relative flex flex-col gap-2.5 rounded-[18px] border-2 bg-surface p-3.5 text-left shadow-card transition-colors",
                         selected ? "border-accent" : "border-transparent hover:border-accent/30",
                       )}
                     >
                       <span
                         className={cx(
-                          "grid size-11 place-items-center rounded-[14px]",
+                          "grid size-9 place-items-center rounded-xl",
                           selected ? "bg-accent-soft text-accent-ink" : "bg-bg text-ink",
                         )}
                       >
-                        <CatalogIcon name={p.icon} size={22} strokeWidth={1.8} />
+                        <CatalogIcon name={p.icon} size={18} strokeWidth={1.8} />
                       </span>
                       <span className="flex flex-col gap-0.5">
-                        <span className="text-[15px] font-semibold">{p.name}</span>
-                        <span className="text-[13px] text-muted">desde {money(p.price)}</span>
+                        <span className="text-sm font-semibold">{p.name}</span>
+                        <span className="text-xs text-muted">desde {money(p.price)}</span>
                       </span>
                       {selected && (
-                        <span className="absolute top-3.5 right-3.5 grid size-6 place-items-center rounded-full bg-accent text-white">
-                          <Check size={14} strokeWidth={3} />
+                        <span className="absolute top-3 right-3 grid size-5 place-items-center rounded-full bg-accent text-white">
+                          <Check size={12} strokeWidth={3} />
                         </span>
                       )}
                     </button>
@@ -256,15 +308,14 @@ export function QuoteBuilder({
                 })}
               </div>
             </section>
+          )}
 
-            {/* Step 2 · extras */}
-            <section className={cx("flex flex-col gap-4", step !== 2 && "max-lg:hidden")}>
-              <MobileStepNav step={2} onBack={() => go(1)} />
-              <SectionTitle n={2} title="Agrega extras" mobileTitle="Agrega extras" />
+          {step === 2 && (
+            <section className="flex flex-col gap-3">
               {project && (
-                <div className="flex w-fit max-w-full items-center gap-2.5 rounded-full bg-surface py-2 pr-2 pl-3 shadow-card lg:hidden">
-                  <CatalogIcon name={project.icon} size={18} className="text-accent-ink" />
-                  <span className="min-w-0 text-sm font-semibold">
+                <div className="flex w-fit max-w-full items-center gap-2 rounded-full bg-surface py-1.5 pr-1.5 pl-3 shadow-card lg:hidden">
+                  <CatalogIcon name={project.icon} size={16} className="text-accent-ink" />
+                  <span className="min-w-0 text-[13px] font-semibold">
                     {project.name} · {money(project.price)}
                   </span>
                   <button
@@ -276,7 +327,7 @@ export function QuoteBuilder({
                   </button>
                 </div>
               )}
-              <div className="grid gap-2.5 md:grid-cols-2 lg:gap-3">
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 {extras.map((e) => {
                   const q = qty[e.id] ?? 0;
                   const on = q > 0;
@@ -290,20 +341,20 @@ export function QuoteBuilder({
                     <>
                       <span
                         className={cx(
-                          "grid size-11 shrink-0 place-items-center rounded-[14px]",
+                          "grid size-9 shrink-0 place-items-center rounded-xl",
                           on ? "bg-accent-soft text-accent-ink" : "bg-bg text-ink-2",
                         )}
                       >
-                        <CatalogIcon name={e.icon} size={22} strokeWidth={1.8} />
+                        <CatalogIcon name={e.icon} size={18} strokeWidth={1.8} />
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="text-[15px] font-semibold break-words hyphens-auto">{e.name}</span>
-                        <span className="text-[13px] text-muted">{priceText}</span>
+                        <span className="text-sm font-semibold break-words hyphens-auto">{e.name}</span>
+                        <span className="text-xs text-muted">{priceText}</span>
                       </span>
                     </>
                   );
                   const rowClass = cx(
-                    "flex items-center gap-3 rounded-[20px] border-[1.5px] bg-surface p-3.5 text-left shadow-card transition-colors sm:gap-3.5 sm:p-4",
+                    "flex items-center gap-3 rounded-[18px] border-[1.5px] bg-surface p-3 text-left shadow-card transition-colors",
                     on ? "border-accent" : "border-transparent",
                   );
                   return e.unit === "EACH" ? (
@@ -320,12 +371,11 @@ export function QuoteBuilder({
                 })}
               </div>
             </section>
+          )}
 
-            {/* Step 3 · contact details */}
-            <section className={cx("flex flex-col gap-5", step !== 3 && "max-lg:hidden")}>
-              <MobileStepNav step={3} onBack={() => go(2)} />
-              <SectionTitle n={3} title="Tus datos" mobileTitle="Tu propuesta" />
-              <div className="card flex flex-col gap-3.5 p-[18px] lg:p-5">
+          {step === 3 && (
+            <section className="flex flex-col gap-4">
+              <div className="card flex flex-col gap-3.5 rounded-[20px] p-4 lg:p-5">
                 <div className="grid gap-3.5 md:grid-cols-2">
                   <TextField
                     id="cliente-nombre"
@@ -333,7 +383,7 @@ export function QuoteBuilder({
                     required
                     value={name}
                     onChange={setName}
-                    onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+                    onBlur={touch("name")}
                     error={fieldError("name")}
                     placeholder="Ej.: Laura Méndez"
                     autoComplete="name"
@@ -345,31 +395,59 @@ export function QuoteBuilder({
                     required
                     value={business}
                     onChange={setBusiness}
-                    onBlur={() => setTouched((t) => ({ ...t, business: true }))}
+                    onBlur={touch("business")}
                     error={fieldError("business")}
                     placeholder="Ej.: Café Colonial"
                     autoComplete="organization"
                     maxLength={80}
                   />
+                  <TextField
+                    id="cliente-correo"
+                    label="Correo"
+                    required
+                    type="email"
+                    inputMode="email"
+                    value={email}
+                    onChange={setEmail}
+                    onBlur={touch("email")}
+                    error={fieldError("email")}
+                    placeholder="tu@correo.com"
+                    autoComplete="email"
+                    maxLength={120}
+                  />
+                  <TextField
+                    id="cliente-telefono"
+                    label="WhatsApp"
+                    required
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={setPhone}
+                    onBlur={touch("phone")}
+                    error={fieldError("phone")}
+                    placeholder="809 555 0123"
+                    autoComplete="tel"
+                    maxLength={20}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-semibold text-ink-2">
+                  <span className="text-xs font-semibold text-ink-2">
                     Plazo <Req />
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    <Chip active={!urgent} onClick={() => setUrgent(false)} className="text-sm">
+                    <Chip active={!urgent} onClick={() => setUrgent(false)}>
                       Normal
                     </Chip>
-                    <Chip active={urgent} onClick={() => setUrgent(true)} className="text-sm">
+                    <Chip active={urgent} onClick={() => setUrgent(true)}>
                       Urgente +20%
                     </Chip>
                   </div>
                   <span className="text-xs text-muted">Normal: 3–4 semanas. Urgente: la mitad del tiempo.</span>
                 </div>
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-semibold text-ink-2">Nota</span>
+                  <span className="text-xs font-semibold text-ink-2">Nota</span>
                   <textarea
-                    className={cx(inputClass, "h-auto min-h-[84px] resize-y py-3 leading-snug")}
+                    className={cx(inputClass, "h-auto min-h-[76px] resize-y py-2.5 leading-snug")}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Cuéntame algo de tu proyecto"
@@ -387,29 +465,49 @@ export function QuoteBuilder({
               </div>
               <div className="lg:hidden">{summary}</div>
             </section>
+          )}
+
+          {/* Computer: back / next under the step */}
+          <div className="hidden items-center gap-2.5 lg:flex">
+            {step > 1 && (
+              <button type="button" onClick={() => go((step - 1) as Step)} className={buttonClass("soft", "h-11 px-5 text-sm")}>
+                <ChevronLeft size={17} /> Atrás
+              </button>
+            )}
+            {step < 3 && (
+              <button
+                type="button"
+                disabled={step === 1 && !project}
+                onClick={() => go((step + 1) as Step)}
+                className={buttonClass("dark", "h-11 px-5 text-sm")}
+              >
+                Siguiente <ArrowRight size={17} />
+              </button>
+            )}
           </div>
+        </div>
 
-          <aside className="hidden lg:block">
-            <div className="sticky top-6">{summary}</div>
-          </aside>
-        </main>
-      )}
+        {/* Right: the quote, always visible (computer) */}
+        <aside className="hidden lg:sticky lg:top-6 lg:block">{summary}</aside>
+      </main>
 
-      {/* Mobile bottom bar with the live total */}
-      {!sentMessage && step < 3 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 px-5 pb-6 md:px-10 lg:hidden">
-          <div className="mx-auto flex max-w-xl items-center justify-between rounded-full bg-ink py-2.5 pr-2.5 pl-6 shadow-float">
-            <div className="flex flex-col">
-              <span className="text-xs text-nav-idle">{totalLabel}</span>
-              <span className="text-[21px] font-bold tracking-[-0.02em] text-white tabular-nums">{money(totals.total)}</span>
+      {/* Phone and iPad: bottom bar with the live total */}
+      {step < 3 && (
+        <div className="fixed inset-x-0 bottom-0 z-20 px-4 pb-5 md:px-8 lg:hidden">
+          <div className="mx-auto flex max-w-xl items-center justify-between rounded-full bg-ink py-1.5 pr-1.5 pl-5 shadow-float">
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-[11px] text-nav-idle">Total estimado{extrasLabel ? ` · ${extrasLabel}` : ""}</span>
+              <span className="text-lg leading-tight font-bold tracking-[-0.02em] text-white tabular-nums">
+                {money(totals.total)}
+              </span>
             </div>
             <button
               type="button"
               disabled={step === 1 && !project}
               onClick={() => go((step + 1) as Step)}
-              className="flex h-[52px] items-center gap-2 rounded-full bg-accent px-5 text-[15px] font-semibold text-white disabled:opacity-50"
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Siguiente <ArrowRight size={18} />
+              Siguiente <ArrowRight size={16} />
             </button>
           </div>
         </div>
@@ -428,15 +526,15 @@ function Header({
   onCurrency: (c: Currency) => void;
 }) {
   return (
-    <header className="flex items-center justify-between px-5 pt-5 pb-4 md:px-10 lg:py-6 xl:px-16">
-      <div className="flex items-center gap-2.5 lg:gap-3">
-        <ProfilePhoto size={44} priority className="max-lg:size-10!" />
-        <span className="flex flex-col">
-          <span className="text-[15px] font-semibold lg:text-base">{settings.ownerName}</span>
-          <span className="text-xs text-muted lg:text-[13px]">{settings.ownerRole}</span>
+    <header className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 md:px-8 lg:py-5 xl:px-10">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <ProfilePhoto size={40} priority className="max-lg:size-9!" />
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold lg:text-[15px]">{settings.ownerName}</span>
+          <span className="truncate text-xs text-muted">{settings.ownerRole}</span>
         </span>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-4">
         {settings.portfolioUrl && (
           <a href={settings.portfolioUrl} className="hidden text-sm font-medium text-ink-2 hover:text-ink md:block">
             Ver mi portafolio
@@ -455,7 +553,7 @@ function Header({
               aria-pressed={currency === c}
               onClick={() => onCurrency(c)}
               className={cx(
-                "rounded-full px-3 py-1.5 text-[13px] lg:px-3.5",
+                "rounded-full px-2.5 py-1 text-xs lg:px-3 lg:py-1.5 lg:text-[13px]",
                 currency === c ? "bg-surface font-semibold text-ink shadow-sm" : "font-medium text-muted",
               )}
             >
@@ -470,9 +568,9 @@ function Header({
 
 function Progress({ step }: { step: Step }) {
   return (
-    <div className="flex w-full gap-1.5">
+    <div className="flex w-full gap-1">
       {[1, 2, 3].map((i) => (
-        <span key={i} className={cx("h-[5px] flex-1 rounded-full", i <= step ? "bg-accent" : "bg-[#DDE0E5]")} />
+        <span key={i} className={cx("h-1 flex-1 rounded-full", i <= step ? "bg-accent" : "bg-[#DDE0E5]")} />
       ))}
     </div>
   );
@@ -480,50 +578,28 @@ function Progress({ step }: { step: Step }) {
 
 function MobileStepNav({ step, onBack }: { step: Step; onBack: () => void }) {
   return (
-    <div className="flex items-center justify-between lg:hidden">
-      <button
-        type="button"
-        onClick={onBack}
-        aria-label="Atrás"
-        className="grid size-10 place-items-center rounded-full bg-surface shadow-card"
-      >
-        <ChevronLeft size={20} />
-      </button>
-      <div className="w-[120px]">
+    <div className="flex items-center gap-3 lg:hidden">
+      {step > 1 && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Atrás"
+          className="grid size-8 shrink-0 place-items-center rounded-full bg-surface shadow-card"
+        >
+          <ChevronLeft size={17} />
+        </button>
+      )}
+      <div className="flex-1">
         <Progress step={step} />
       </div>
-      <span className="text-[13px] font-semibold">Paso {step} de 3</span>
+      <span className="text-xs font-semibold whitespace-nowrap">Paso {step} de 3</span>
     </div>
-  );
-}
-
-function SectionTitle({
-  n,
-  title,
-  mobileTitle,
-  mobileClass,
-}: {
-  n: number;
-  title: string;
-  mobileTitle?: string;
-  mobileClass?: string;
-}) {
-  return (
-    <>
-      <h2 className={cx("font-bold lg:hidden", mobileTitle ? "text-[34px] leading-tight tracking-[-0.035em]" : mobileClass)}>
-        {mobileTitle ?? title}
-      </h2>
-      <h2 className="hidden items-center gap-2.5 text-xl font-bold tracking-[-0.015em] lg:flex">
-        <span className="grid size-[26px] place-items-center rounded-full bg-ink text-xs text-white">{n}</span>
-        {title}
-      </h2>
-    </>
   );
 }
 
 function Stepper({ value, label, onChange }: { value: number; label: string; onChange: (v: number) => void }) {
   return (
-    <div className="flex shrink-0 items-center gap-2.5 rounded-full bg-bg p-1">
+    <div className="flex shrink-0 items-center gap-2 rounded-full bg-bg p-1">
       <button
         type="button"
         aria-label={`Quitar ${label}`}
@@ -531,9 +607,9 @@ function Stepper({ value, label, onChange }: { value: number; label: string; onC
         onClick={() => onChange(value - 1)}
         className="grid size-7 place-items-center rounded-full bg-surface disabled:opacity-40"
       >
-        <Minus size={16} />
+        <Minus size={15} />
       </button>
-      <span className="w-3 text-center text-[15px] font-semibold tabular-nums" aria-live="polite">
+      <span className="w-3 text-center text-sm font-semibold tabular-nums" aria-live="polite">
         {value}
       </span>
       <button
@@ -542,7 +618,7 @@ function Stepper({ value, label, onChange }: { value: number; label: string; onC
         onClick={() => onChange(value + 1)}
         className="grid size-7 place-items-center rounded-full bg-accent text-white"
       >
-        <Plus size={16} />
+        <Plus size={15} />
       </button>
     </div>
   );
@@ -556,10 +632,9 @@ function Summary({
   urgent,
   currency,
   rate,
-  link,
+  mailto,
   canSend,
   onSend,
-  sending,
   formError,
 }: {
   project: BuilderItem | null;
@@ -569,22 +644,18 @@ function Summary({
   urgent: boolean;
   currency: Currency;
   rate: number;
-  link: string;
+  mailto: string;
   canSend: boolean;
   onSend: (e: React.MouseEvent<HTMLAnchorElement>) => void;
-  sending: boolean;
   formError: string | null;
 }) {
   const money = (n: number) => formatIn(currency, n, rate);
   const other = currency === "DOP" ? formatUSD(totals.total) : formatDOP(totals.total, rate);
   const monthly = extras.filter((e) => e.unit === "MONTHLY");
   return (
-    <div className="flex flex-col gap-5">
-      <div className="card flex flex-col gap-3 p-[18px] lg:gap-4 lg:rounded-[28px] lg:p-6">
-        <h3 className="text-[17px] font-bold lg:text-xl lg:tracking-[-0.015em]">
-          <span className="lg:hidden">Resumen</span>
-          <span className="max-lg:hidden">Tu cotización</span>
-        </h3>
+    <div className="flex flex-col gap-3">
+      <div className="card flex flex-col gap-2.5 rounded-[20px] p-4 lg:gap-3 lg:p-5">
+        <h3 className="text-base font-bold tracking-[-0.01em]">Tu cotización</h3>
         {!project && <p className="text-sm text-muted">Elige un tipo de proyecto para empezar.</p>}
         {project && <Line label={project.name} value={money(project.price)} strong />}
         {extras
@@ -594,115 +665,98 @@ function Summary({
           ))}
         {urgent && totals.urgentFee > 0 && <Line label="Plazo urgente (+20%)" value={money(totals.urgentFee)} />}
         <hr className="border-line" />
-        <div className="flex items-end justify-between gap-3 lg:flex-col lg:items-start lg:gap-1">
-          <div className="flex flex-col gap-0.5 lg:contents">
-            <span className="text-sm font-semibold lg:order-1 lg:text-[13px] lg:font-normal lg:text-muted">Total estimado</span>
-            <span className="text-xs text-muted lg:order-3 lg:text-[13px]">
-              {currency === "DOP" ? "=" : "≈"} {other} · US$1 = RD${formatRate(rate)}
-              {monthly.length > 0 && <span className="max-lg:hidden"> · Mantenimiento aparte</span>}
-            </span>
-          </div>
-          <span className="text-[26px] font-bold tracking-[-0.025em] tabular-nums lg:order-2 lg:text-[40px] lg:tracking-[-0.035em]">
-            {money(totals.total)}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">Total estimado</span>
+          <span className="text-2xl font-bold tracking-[-0.03em] tabular-nums lg:text-[32px]">{money(totals.total)}</span>
+          <span className="text-xs text-muted">
+            {currency === "DOP" ? "=" : "≈"} {other} · US$1 = RD${formatRate(rate)}
           </span>
         </div>
         {monthly.map((e) => (
           <Line key={e.id} label={`${e.name} (aparte)`} value={`${money(e.price)}/mes`} />
         ))}
-        <div className="flex items-center gap-2 rounded-xl bg-accent-soft px-3 py-2.5 text-xs text-accent-ink lg:hidden">
-          <Info size={16} className="shrink-0" />
-          Precio de referencia. Te confirmo el final por WhatsApp.
-        </div>
-        <SendButton link={link} canSend={canSend} onSend={onSend} sending={sending} className="max-lg:hidden" />
-        {formError && (
-          <p role="alert" className="text-center text-sm font-medium text-[#C53030] max-lg:hidden">
-            {formError}
-          </p>
-        )}
-        <p className="text-center text-xs text-muted max-lg:hidden">Precio de referencia. Te confirmo el final por WhatsApp.</p>
-      </div>
-      <div className="flex flex-col items-center gap-2.5 lg:hidden">
-        <SendButton link={link} canSend={canSend} onSend={onSend} sending={sending} className="h-[58px] text-base" />
+        <a href={mailto} onClick={onSend} className={buttonClass("primary", cx("mt-1 w-full", !canSend && "opacity-60"))}>
+          <Mail size={18} /> Enviar cotización por correo
+        </a>
         {formError ? (
           <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
             {formError}
           </p>
         ) : (
-          <p className="text-xs text-muted">Se abrirá WhatsApp con el mensaje ya escrito.</p>
+          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
+            <Info size={14} className="mt-px shrink-0" />
+            Se abre tu correo con todo escrito. Precio de referencia: te escribo por WhatsApp para confirmarte.
+          </p>
         )}
       </div>
     </div>
   );
 }
 
-function SendButton({
-  link,
-  canSend,
-  onSend,
-  sending,
-  className,
-}: {
-  link: string;
-  canSend: boolean;
-  onSend: (e: React.MouseEvent<HTMLAnchorElement>) => void;
-  sending: boolean;
-  className?: string;
-}) {
-  return (
-    <a
-      href={link}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={onSend}
-      aria-busy={sending}
-      className={buttonClass("primary", cx("w-full", (!canSend || sending) && "opacity-60", className))}
-    >
-      <MessageCircle size={20} />
-      {sending ? "Abriendo WhatsApp…" : "Enviar propuesta por WhatsApp"}
-    </a>
-  );
-}
-
 function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex justify-between gap-3 text-sm">
+    <div className="flex justify-between gap-3 text-[13px] lg:text-sm">
       <span className={strong ? "font-semibold" : "text-ink-2"}>{label}</span>
       <span className={cx("tabular-nums", strong ? "font-semibold" : "font-medium")}>{value}</span>
     </div>
   );
 }
 
-function Sent({ message, settings, link, onReset }: { message: string; settings: Settings; link: string; onReset: () => void }) {
+function Sent({ email, onReset }: { email: SentEmail; onReset: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const gmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email.to)}&su=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
   return (
-    <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-5 pt-6 pb-10">
-      <span className="grid size-[76px] place-items-center rounded-full bg-accent text-white shadow-fab">
-        <Check size={36} strokeWidth={2.5} />
-      </span>
-      <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-[30px] font-bold tracking-[-0.035em]">¡Propuesta lista!</h1>
-        <p className="max-w-[300px] text-[15px] leading-relaxed text-muted">
-          Abrimos WhatsApp con este mensaje. Solo toca enviar y te respondo pronto.
-        </p>
+    <main className="flex max-w-xl flex-col gap-5 px-4 pt-2 pb-10 md:px-8 xl:px-10">
+      <div className="flex items-center gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-white">
+          <Check size={22} strokeWidth={2.5} />
+        </span>
+        <h1 className="text-2xl font-bold tracking-[-0.03em]">¡Cotización lista!</h1>
       </div>
-      <div className="card w-full overflow-hidden">
-        <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
-          <ProfilePhoto size={34} />
-          <span className="flex flex-col">
-            <span className="text-sm font-semibold">{settings.ownerName}</span>
-            <span className="text-[11px] text-muted">WhatsApp</span>
+      <p className="text-sm leading-relaxed text-ink-2">
+        Se abrió tu app de correo con la cotización escrita: solo toca <b>enviar</b>. La reviso y te escribo por WhatsApp al{" "}
+        <b>{email.phone}</b> para decirte si fue aceptada.
+      </p>
+
+      {/* The message, the way it looks in the mail app */}
+      <div className="card overflow-hidden rounded-[20px]">
+        <div className="flex flex-col divide-y divide-line border-b border-line px-4 text-[13px]">
+          <span className="py-2.5 text-muted">
+            Para: <span className="text-ink">{email.to}</span>
+          </span>
+          <span className="py-2.5 text-muted">
+            Asunto: <span className="text-ink">{email.subject}</span>
           </span>
         </div>
-        <div className="flex justify-end bg-[#EFEAE2] p-3.5">
-          <p className="max-w-[300px] rounded-2xl rounded-br-sm bg-[#D9FDD3] px-3.5 py-3 text-[13px] leading-relaxed whitespace-pre-line text-[#111B21]">
-            {message}
-          </p>
-        </div>
+        <p className="max-h-72 overflow-y-auto px-4 py-3.5 text-[13px] leading-relaxed whitespace-pre-line">{email.body}</p>
       </div>
-      <div className="flex w-full flex-col gap-2.5">
-        <a href={link} target="_blank" rel="noopener noreferrer" className={buttonClass("primary", "w-full")}>
-          <MessageCircle size={20} /> Abrir WhatsApp otra vez
+
+      <div className="flex flex-col gap-2">
+        <a href={mailtoLink(email.to, email)} className={buttonClass("primary", "w-full")}>
+          <Mail size={18} /> Abrir mi correo otra vez
         </a>
-        <button type="button" onClick={onReset} className={buttonClass("soft", "w-full")}>
+        <div className="grid grid-cols-2 gap-2">
+          <a
+            href={gmail}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonClass("soft", "h-11 gap-1.5 px-3 text-sm whitespace-nowrap")}
+          >
+            Abrir en Gmail
+          </a>
+          <button
+            type="button"
+            onClick={async () => {
+              await navigator.clipboard.writeText(email.body);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1600);
+            }}
+            className={buttonClass("soft", "h-11 gap-1.5 px-3 text-sm whitespace-nowrap")}
+          >
+            <Copy size={15} /> {copied ? "¡Copiado!" : "Copiar mensaje"}
+          </button>
+        </div>
+        <button type="button" onClick={onReset} className={buttonClass("outline", "h-11 w-full text-sm")}>
           Hacer otra cotización
         </button>
       </div>
@@ -739,7 +793,7 @@ function TextField({
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "onBlur" | "id">) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-[13px] font-semibold text-ink-2">
+      <label htmlFor={id} className="text-xs font-semibold text-ink-2">
         {label} {required && <Req />}
       </label>
       <input

@@ -76,7 +76,7 @@ export function Chip({ active, className, ...props }: ComponentProps<"button"> &
       type="button"
       aria-pressed={active}
       className={cx(
-        "h-11 shrink-0 rounded-full px-5 text-[15px] whitespace-nowrap transition-colors",
+        "h-9 shrink-0 rounded-full px-4 text-sm whitespace-nowrap transition-colors",
         active ? "bg-accent font-medium text-white" : "bg-chip text-[#6B7079] hover:bg-[#E3E5E9]",
         className,
       )}
@@ -96,7 +96,7 @@ const BUTTON: Record<ButtonVariant, string> = {
 
 export function buttonClass(variant: ButtonVariant = "primary", className?: string) {
   return cx(
-    "inline-flex h-[52px] items-center justify-center gap-2 rounded-full px-6 text-[15px] font-semibold transition-colors disabled:opacity-60",
+    "inline-flex h-12 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold transition-colors disabled:opacity-60",
     BUTTON[variant],
     className,
   );
@@ -107,7 +107,7 @@ export function Button({ variant = "primary", className, ...props }: ComponentPr
 }
 
 export const inputClass =
-  "h-12 w-full rounded-[14px] bg-bg px-4 text-[15px] text-ink outline-none placeholder:text-muted focus:ring-2 focus:ring-accent/40";
+  "h-11 w-full rounded-xl bg-bg px-3.5 text-base lg:text-[15px] text-ink outline-none placeholder:text-muted focus:ring-2 focus:ring-accent/40";
 
 export function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (

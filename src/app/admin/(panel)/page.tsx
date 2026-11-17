@@ -1,4 +1,4 @@
-import { CircleExclamationPoint, FileText, Hourglass, Inbox, Layers, MessageCircle, Plus, Settings } from "lucide-react";
+import { CircleExclamationPoint, FileText, Hourglass, Inbox, Layers, Mail, Plus, Settings } from "lucide-react";
 import Link from "next/link";
 import { DocCard, EmptyState, PageShell, SectionTitle } from "@/components/admin";
 import { ProfilePhoto } from "@/components/profile-photo";
@@ -62,13 +62,13 @@ export default async function AdminHome() {
   ];
 
   return (
-    <PageShell className="gap-[22px] lg:gap-6">
+    <PageShell className="gap-4 lg:gap-6">
       <header className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <ProfilePhoto size={48} className="lg:hidden" />
+          <ProfilePhoto size={40} className="lg:hidden" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-[13px] text-muted">{formatDateLong(now)}</p>
-            <h1 className="text-[28px] font-bold tracking-[-0.035em] sm:text-[30px] lg:text-[32px]">
+            <p className="text-xs text-muted lg:text-[13px]">{formatDateLong(now)}</p>
+            <h1 className="text-[22px] leading-tight font-bold tracking-[-0.03em] lg:text-[32px]">
               Hola, {settings.ownerName.split(" ")[0]}
             </h1>
           </div>
@@ -80,24 +80,24 @@ export default async function AdminHome() {
           <Link
             href="/admin/catalogo"
             aria-label="Catálogo"
-            className="grid size-10 place-items-center rounded-full bg-surface shadow-card"
+            className="grid size-9 place-items-center rounded-full bg-surface shadow-card"
           >
-            <Layers size={20} />
+            <Layers size={17} />
           </Link>
           <Link
             href="/admin/ajustes"
             aria-label="Ajustes"
-            className="grid size-10 place-items-center rounded-full bg-surface shadow-card"
+            className="grid size-9 place-items-center rounded-full bg-surface shadow-card"
           >
-            <Settings size={20} />
+            <Settings size={17} />
           </Link>
         </nav>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-4 xl:grid-cols-[380px_1fr_1fr_1fr]">
-        <div className="flex flex-col gap-4 rounded-[28px] bg-ink p-[22px] text-white col-span-2 lg:col-span-3 lg:rounded-3xl xl:col-span-1">
+      <section className="grid grid-cols-2 gap-2.5 lg:grid-cols-3 lg:gap-4 xl:grid-cols-[380px_1fr_1fr_1fr]">
+        <div className="flex flex-col gap-3 rounded-[22px] bg-ink p-4 text-white col-span-2 lg:gap-4 lg:p-[22px] lg:col-span-3 lg:rounded-3xl xl:col-span-1">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-nav-idle lg:text-[13px]">Cobrado en {monthName}</span>
+            <span className="text-[13px] text-nav-idle">Cobrado en {monthName}</span>
             {change !== null && (
               <span className="rounded-full bg-accent/20 px-2.5 py-1 text-xs font-semibold text-[#8DBBFF]">
                 {change >= 0 ? "+" : ""}
@@ -105,9 +105,11 @@ export default async function AdminHome() {
               </span>
             )}
           </div>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <span className="text-[38px] font-bold tracking-[-0.04em] tabular-nums lg:text-[34px]">{formatUSD(collected)}</span>
-            <div className="flex h-14 items-end gap-2 lg:h-11 lg:gap-1.5" aria-label="Cobros de las últimas 6 semanas">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <span className="text-[28px] leading-none font-bold tracking-[-0.035em] tabular-nums lg:text-[34px]">
+              {formatUSD(collected)}
+            </span>
+            <div className="flex h-10 items-end gap-1.5 lg:h-11 lg:gap-1.5" aria-label="Cobros de las últimas 6 semanas">
               {weeks.map((w, i) => (
                 <span
                   key={i}
@@ -122,17 +124,20 @@ export default async function AdminHome() {
         {metrics.map((m) => (
           <div
             key={m.label}
-            className={cx("card flex-col gap-3 p-[18px] lg:p-[22px]", m.desktopOnly ? "hidden lg:flex" : "flex")}
+            className={cx(
+              "card flex-col gap-2 rounded-[20px] p-3.5 lg:gap-3 lg:rounded-3xl lg:p-[22px]",
+              m.desktopOnly ? "hidden lg:flex" : "flex",
+            )}
           >
             <div className="flex items-center justify-between max-lg:order-2">
               <span className="text-[13px] text-muted max-lg:hidden">{m.label}</span>
-              <span className={cx("grid size-9 place-items-center rounded-xl lg:size-8 lg:rounded-[10px]", m.tone)}>
-                <m.icon size={18} />
+              <span className={cx("grid size-8 place-items-center rounded-[10px]", m.tone)}>
+                <m.icon size={16} />
               </span>
             </div>
             <div className="flex flex-col gap-0.5 max-lg:order-3">
-              <span className="text-[13px] text-muted lg:hidden">{m.label}</span>
-              <span className="text-xl font-bold tracking-[-0.02em] tabular-nums lg:text-[28px]">{m.value}</span>
+              <span className="text-xs text-muted lg:hidden">{m.label}</span>
+              <span className="text-lg font-bold tracking-[-0.02em] tabular-nums lg:text-[28px]">{m.value}</span>
               <span className="text-xs text-muted max-lg:hidden">{m.detail}</span>
             </div>
           </div>
@@ -184,10 +189,10 @@ export default async function AdminHome() {
           </table>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2.5">
           <SectionTitle
             action={
-              <Link href="/admin/cotizaciones?origen=web" className="text-sm font-medium text-accent-ink lg:hidden">
+              <Link href="/admin/cotizaciones?origen=web" className="text-[13px] font-medium text-accent-ink lg:hidden">
                 Ver todas
               </Link>
             }
@@ -215,7 +220,7 @@ export default async function AdminHome() {
                   subtitle={q.title}
                   amount={formatUSD(q.total)}
                   number="Desde el cotizador"
-                  numberIcon={MessageCircle}
+                  numberIcon={Mail}
                   date={formatRelative(q.createdAt, now)}
                 />
               ))

@@ -8,8 +8,9 @@ import { type BuilderItem, QuoteBuilder } from "./quote-builder";
 export const revalidate = 3600;
 
 export default async function Home() {
-  const [settings, items, rate] = await Promise.all([
+  const [settings, admin, items, rate] = await Promise.all([
     prisma.settings.findUnique({ where: { id: 1 } }),
+    prisma.admin.findFirst({ select: { email: true } }),
     prisma.catalogItem.findMany({ where: { visible: true }, orderBy: [{ kind: "asc" }, { sortOrder: "asc" }] }),
     getRate(),
   ]);
@@ -28,7 +29,7 @@ export default async function Home() {
       projects={items.filter((i) => i.kind === "PROJECT").map(toDto)}
       extras={items.filter((i) => i.kind === "EXTRA").map(toDto)}
       settings={{
-        whatsapp: settings?.whatsapp ?? "",
+        email: admin?.email ?? "priscilaperezherrera@gmail.com",
         rate: rate.rate,
         template: settings?.messageTemplate ?? DEFAULT_TEMPLATE,
         ownerName: settings?.ownerName ?? "Priscila Pérez",

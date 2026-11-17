@@ -1,14 +1,13 @@
-import { FileText, MessageCircle, Phone, ReceiptText } from "lucide-react";
+import { FileText, Mail, MessageCircle, Phone, ReceiptText } from "lucide-react";
 import Link from "next/link";
 import { cx, StatusBadge } from "@/components/ui";
 import { getInvoices, getQuotes } from "@/lib/data";
 import { formatDateShort, invoiceNumber, quoteNumber } from "@/lib/format";
 import { formatUSD } from "@/lib/money";
-import { mailFrom } from "@/lib/mailer";
+import { mailtoLink } from "@/lib/mail";
 import { prisma } from "@/lib/prisma";
 import { phoneError } from "@/lib/validation";
 import { phoneForWhatsApp } from "@/lib/whatsapp";
-import { EmailComposer } from "./email-composer";
 import type { ClientWithBalance } from "./client-data";
 
 /** Profile header, quick actions, totals, history and note. Used by the side panel and the client page. */
@@ -50,6 +49,14 @@ export async function ClientProfile({ client: c, layout }: { client: ClientWithB
       primary: true,
     },
     { label: "Llamar", icon: Phone, href: validPhone ? `tel:+${phoneForWhatsApp(c.phone)}` : null },
+    // Opens the phone's or computer's own mail app with the greeting and signature written.
+    {
+      label: "Correo",
+      icon: Mail,
+      href: mailtoLink(c.email, {
+        body: `Hola ${c.contact || c.name},\n\n\n\n${[settings?.ownerName, settings?.ownerRole].filter(Boolean).join("\n")}`,
+      }),
+    },
   ];
   const page = layout === "page";
 
@@ -57,9 +64,9 @@ export async function ClientProfile({ client: c, layout }: { client: ClientWithB
     <div className="flex flex-col gap-4">
       <div className={cx("flex items-center gap-3.5", page && "flex-col text-center")}>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className={cx("font-bold break-words", page ? "text-[26px] tracking-[-0.03em]" : "text-xl")}>{c.name}</span>
-          <span className="text-[13px] text-muted">
-            {[c.contact, c.phone].filter(Boolean).join(" · ") || "Sin datos de contacto"}
+          <span className={cx("font-bold break-words", page ? "text-[22px] tracking-[-0.03em]" : "text-lg")}>{c.name}</span>
+          <span className="text-[13px] break-all text-muted">
+            {[c.contact, c.phone, c.email].filter(Boolean).join(" · ") || "Sin datos de contacto"}
           </span>
         </div>
       </div>
@@ -87,14 +94,6 @@ export async function ClientProfile({ client: c, layout }: { client: ClientWithB
             </a>
           ) : null,
         )}
-        <EmailComposer
-          clientId={c.id}
-          clientEmail={c.email}
-          greetingName={c.contact || c.name}
-          from={mailFrom()}
-          signature={[settings?.ownerName, settings?.ownerRole].filter(Boolean).join("\n")}
-          compact={!page}
-        />
       </div>
       {!validPhone && (
         <p className="text-xs text-muted">
@@ -122,7 +121,7 @@ export async function ClientProfile({ client: c, layout }: { client: ClientWithB
         ))}
       </div>
 
-      <h3 className={cx("pt-1 font-bold", page ? "text-[19px] tracking-[-0.015em]" : "text-[15px]")}>Historial</h3>
+      <h3 className={cx("pt-1 font-bold", page ? "text-base" : "text-[15px]")}>Historial</h3>
       {history.length === 0 && <p className="text-sm text-muted">Sin cotizaciones ni facturas todavía.</p>}
       <div className={cx("flex flex-col", page ? "card px-[18px] py-1" : "gap-1")}>
         {history.map((h) => (

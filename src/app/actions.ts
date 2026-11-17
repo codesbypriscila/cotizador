@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { businessNameError, personNameError, tidy } from "@/lib/validation";
+import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
 
 const schema = z.object({
   projectId: z.string().min(1),
@@ -21,6 +21,21 @@ const schema = z.object({
       const error = businessNameError(v);
       if (error) ctx.addIssue({ code: "custom", message: error });
     }),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .superRefine((v, ctx) => {
+      const error = v ? emailError(v) : "Escribe tu correo.";
+      if (error) ctx.addIssue({ code: "custom", message: error });
+    }),
+  phone: z
+    .string()
+    .transform(tidy)
+    .superRefine((v, ctx) => {
+      const error = phoneError(v, { required: true });
+      if (error) ctx.addIssue({ code: "custom", message: error });
+    }),
   urgent: z.boolean(),
   note: z.string().trim().max(1000),
   website: z.string().max(0), // honeypot: real people leave it empty
@@ -32,7 +47,7 @@ export type ProposalInput = z.input<typeof schema>;
 /**
  * Saves a proposal from the public builder so it shows up in the admin as
  * "Propuestas nuevas". Prices are read again from the catalog; the client's
- * numbers are never trusted. WhatsApp only opens after the data passes these checks.
+ * numbers are never trusted. The same checks run in the browser before the email opens.
  */
 export async function submitProposal(input: ProposalInput): Promise<{ ok: boolean; error?: string }> {
   const parsed = schema.safeParse(input);
@@ -41,7 +56,9 @@ export async function submitProposal(input: ProposalInput): Promise<{ ok: boolea
     const field = issue?.path[0];
     return {
       ok: false,
-      error: field === "name" || field === "business" ? issue.message : "Revisa tus datos e inténtalo otra vez.",
+      error: ["name", "business", "email", "phone"].includes(String(field))
+        ? issue.message
+        : "Revisa tus datos e inténtalo otra vez.",
     };
   }
   const data = parsed.data;
@@ -60,8 +77,11 @@ export async function submitProposal(input: ProposalInput): Promise<{ ok: boolea
   const existing = await prisma.client.findFirst({
     where: { name: { equals: clientName, mode: "insensitive" }, contact: { equals: data.name, mode: "insensitive" } },
   });
-  const client =
-    existing ?? (await prisma.client.create({ data: { name: clientName, contact: data.business ? data.name : "" } }));
+  // Keep the newest email and WhatsApp the client typed.
+  const contactData = { email: data.email, phone: data.phone };
+  const client = existing
+    ? await prisma.client.update({ where: { id: existing.id }, data: contactData })
+    : await prisma.client.create({ data: { name: clientName, contact: data.business ? data.name : "", ...contactData } });
 
   const countable = extras.filter((e) => e.item.unit !== "MONTHLY").length;
   await prisma.quote.create({

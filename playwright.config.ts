@@ -44,7 +44,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180_000,
       // No real Gmail in tests: the email sheet shows the "not configured" state.
-      env: { DATABASE_URL: E2E_DATABASE_URL, DIRECT_URL: E2E_DATABASE_URL, SMTP_USER: "", SMTP_PASSWORD: "" },
+      env: { DATABASE_URL: E2E_DATABASE_URL, DIRECT_URL: E2E_DATABASE_URL },
     },
   ],
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

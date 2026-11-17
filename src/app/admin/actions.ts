@@ -9,7 +9,6 @@ import { getServerEnv } from "@/lib/env";
 import { verifyPassword } from "@/lib/password";
 import { parseUSD } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
-import { sendMail } from "@/lib/mailer";
 import { getRate } from "@/lib/rate";
 import { computeTotals } from "@/lib/totals";
 import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
@@ -482,32 +481,4 @@ export async function refreshRate() {
   await requireAdmin();
   await getRate({ force: true });
   revalidatePath("/", "layout");
-}
-
-// ─── Email to clients ───────────────────────────────────────────────────────
-
-const emailSchema = z.object({
-  to: rule((v) => (v ? emailError(v) : "Escribe el correo del cliente.")),
-  subject: z.string().trim().min(1, "Escribe un asunto.").max(150, "Máximo 150 caracteres."),
-  body: z.string().trim().min(1, "Escribe el mensaje.").max(5000, "Máximo 5,000 caracteres."),
-});
-
-/** Sends an email from the admin's Gmail to a client; saves the address on the client if it had none. */
-export async function sendClientEmail(
-  clientId: string,
-  input: z.input<typeof emailSchema>,
-): Promise<{ ok: true } | { ok: false; error?: string; fieldErrors?: Record<string, string> }> {
-  await requireAdmin();
-  const parsed = emailSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, fieldErrors: fieldErrors(parsed.error) };
-  const [client, settings] = await Promise.all([
-    prisma.client.findUnique({ where: { id: clientId } }),
-    prisma.settings.findUnique({ where: { id: 1 }, select: { ownerName: true } }),
-  ]);
-  if (!client) return { ok: false, error: "Ese cliente ya no existe." };
-  const res = await sendMail({ ...parsed.data, text: parsed.data.body, fromName: settings?.ownerName ?? "Priscila Pérez" });
-  if (!res.ok) return { ok: false, error: res.error };
-  if (!client.email) await prisma.client.update({ where: { id: clientId }, data: { email: parsed.data.to.toLowerCase() } });
-  revalidatePath("/admin/clientes", "layout");
-  return { ok: true };
 }

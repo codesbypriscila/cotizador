@@ -22,7 +22,7 @@ for (const width of WIDTHS) {
     await page.getByRole("button", { name: /^US\$$/ }).click();
     await check(page, "cotizador · US$", report);
     await page.getByRole("button", { name: /^RD\$$/ }).click();
-    if (width < 1024) await page.getByRole("button", { name: "Siguiente" }).click();
+    await page.getByRole("button", { name: "Siguiente" }).click();
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
     for (const name of [
       "Reservas y citas",
@@ -32,7 +32,7 @@ for (const width of WIDTHS) {
     ])
       await page.getByRole("switch", { name }).click();
     await check(page, "cotizador · extras", report);
-    if (width < 1024) await page.getByRole("button", { name: "Siguiente" }).click();
+    await page.getByRole("button", { name: "Siguiente" }).click();
     await page.getByRole("button", { name: /Urgente/ }).click();
     await check(page, "cotizador · datos", report);
 

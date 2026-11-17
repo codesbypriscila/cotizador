@@ -7,7 +7,7 @@ export default function AdminLoading() {
       aria-label="Cargando"
     >
       <div className="h-9 w-48 rounded-xl bg-chip" />
-      <div className="h-[52px] w-full max-w-md rounded-full bg-chip" />
+      <div className="h-11 w-full max-w-md rounded-full bg-chip" />
       <div className="flex gap-2">
         {[80, 96, 88, 72].map((w) => (
           <div key={w} className="h-11 rounded-full bg-chip" style={{ width: w }} />

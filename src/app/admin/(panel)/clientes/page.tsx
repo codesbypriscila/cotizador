@@ -59,9 +59,9 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
         <Link
           href="/admin/clientes/nuevo"
           aria-label="Nuevo cliente"
-          className="grid size-[52px] shrink-0 place-items-center rounded-full bg-surface shadow-card lg:hidden"
+          className="grid size-11 shrink-0 place-items-center rounded-full bg-surface shadow-card lg:hidden"
         >
-          <UserPlus size={20} />
+          <UserPlus size={18} />
         </Link>
       </div>
       <FilterChips
@@ -101,10 +101,10 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
                       key={cls}
                       href={to}
                       scroll={false}
-                      className={cx("flex items-center gap-3 py-3.5 lg:gap-4 lg:px-2.5 lg:py-3", cls)}
+                      className={cx("flex items-center gap-3 py-3 lg:gap-4 lg:px-2.5 lg:py-3", cls)}
                     >
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[15px] font-semibold lg:text-sm">{c.name}</span>
+                        <span className="truncate text-sm font-semibold">{c.name}</span>
                         <span className="truncate text-xs text-muted">
                           <span className="lg:hidden">{c.phone || c.contact || "Sin teléfono"}</span>
                           <span className="max-lg:hidden">{c.contact || "—"}</span>
@@ -112,7 +112,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
                       </span>
                       <span className="hidden w-[120px] text-[13px] text-ink-2 lg:block">{c.phone || "—"}</span>
                       <span className="flex flex-col items-end gap-0.5 lg:contents">
-                        <span className="text-sm font-semibold tabular-nums lg:w-[110px] lg:text-right">
+                        <span className="text-[13px] font-semibold tabular-nums lg:w-[110px] lg:text-sm lg:text-right">
                           {c.billed ? formatUSD(c.billed) : "—"}
                         </span>
                         <span

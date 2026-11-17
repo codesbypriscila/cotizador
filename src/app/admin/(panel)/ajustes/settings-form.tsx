@@ -61,10 +61,10 @@ export function SettingsForm({ values, rate }: { values: Values; rate: { rate: n
           </label>
         </section>
         <section className={section}>
-          <h2 className="font-bold">WhatsApp y moneda</h2>
+          <h2 className="font-bold">Contacto y moneda</h2>
           <label className="flex flex-col gap-1.5">
             <span className={label}>
-              Número que recibe las propuestas (con código de país) <Req />
+              Tu WhatsApp (con código de país) <Req />
             </span>
             <input
               name="whatsapp"
@@ -115,7 +115,8 @@ export function SettingsForm({ values, rate }: { values: Values; rate: { rate: n
           Plantilla del mensaje <Req />
         </h2>
         <p className="text-[13px] text-muted">
-          Es el mensaje que se abre en WhatsApp cuando un cliente envía su propuesta. Las líneas con datos vacíos se quitan solas.
+          Es el correo que le queda escrito al cliente cuando envía su cotización (llega a tu correo). Las líneas con datos vacíos
+          se quitan solas.
         </p>
         <textarea
           ref={template}

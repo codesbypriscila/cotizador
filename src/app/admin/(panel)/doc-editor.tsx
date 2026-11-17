@@ -545,7 +545,7 @@ export function DocEditor(props: EditorProps) {
             <hr className="border-line" />
             <div className="flex items-end justify-between">
               <span className="font-bold">Total</span>
-              <span className="text-[26px] font-bold tracking-[-0.03em] tabular-nums lg:text-[30px]">
+              <span className="text-[22px] font-bold tracking-[-0.03em] tabular-nums lg:text-[30px]">
                 {formatUSD(totals.total)}
               </span>
             </div>

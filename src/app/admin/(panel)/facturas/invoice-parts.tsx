@@ -47,7 +47,7 @@ export function InvoiceSummaryCard({ inv, compact }: { inv: InvoiceSummary; comp
       </div>
       <div className="flex flex-col gap-0.5">
         {!compact && <span className="text-[13px] text-muted">Total</span>}
-        <span className="text-[36px] font-bold tracking-[-0.035em] tabular-nums lg:text-[34px]">{formatUSD(inv.total)}</span>
+        <span className="text-[28px] font-bold tracking-[-0.035em] tabular-nums lg:text-[34px]">{formatUSD(inv.total)}</span>
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-bg" role="progressbar" aria-valuenow={pct} aria-label="Pagado">
         <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />

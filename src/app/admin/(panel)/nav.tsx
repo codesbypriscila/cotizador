@@ -92,8 +92,8 @@ export function Sidebar({ ownerName, publicUrl, newCount }: { ownerName: string;
 export function BottomNav({ newCount }: { newCount: number }) {
   const isActive = useActive();
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-center gap-3 px-4 pb-[22px] lg:hidden">
-      <nav className="flex items-center gap-1 rounded-full bg-ink p-2 shadow-float">
+    <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-center gap-2.5 px-4 pb-5 lg:hidden">
+      <nav className="flex w-full max-w-[340px] items-center justify-between gap-1 rounded-full bg-ink p-1 shadow-float">
         {ITEMS.slice(0, 4).map(({ href, label, icon: Icon }) => {
           const active = isActive(href);
           return (
@@ -103,12 +103,12 @@ export function BottomNav({ newCount }: { newCount: number }) {
               aria-label={label}
               aria-current={active ? "page" : undefined}
               className={cx(
-                "grid size-14 place-items-center rounded-full transition-colors",
+                "grid h-10 flex-1 place-items-center rounded-full transition-colors",
                 active ? "bg-white text-ink" : "text-nav-idle hover:text-white",
               )}
             >
               <span className="relative">
-                <Icon size={22} />
+                <Icon size={19} />
                 {href === "/admin/cotizaciones" && newCount > 0 && (
                   <span className="absolute -top-1.5 -right-2 grid min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
                     {newCount}
@@ -122,9 +122,9 @@ export function BottomNav({ newCount }: { newCount: number }) {
       <Link
         href="/admin/cotizaciones/nueva"
         aria-label="Nueva cotización"
-        className="grid size-16 place-items-center rounded-full bg-accent text-white shadow-fab"
+        className="grid size-12 shrink-0 place-items-center rounded-full bg-accent text-white"
       >
-        <Plus size={28} />
+        <Plus size={22} />
       </Link>
     </div>
   );

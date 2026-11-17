@@ -20,7 +20,7 @@ export default async function PanelLayout({ children }: LayoutProps<"/admin">) {
   return (
     <div className="flex min-h-dvh">
       <Sidebar ownerName={settings.ownerName} publicUrl={`${proto}://${host}`} newCount={newCount} />
-      <div className="min-w-0 flex-1 pb-32 lg:pb-0">{children}</div>
+      <div className="min-w-0 flex-1 pb-28 lg:pb-0">{children}</div>
       <BottomNav newCount={newCount} />
     </div>
   );

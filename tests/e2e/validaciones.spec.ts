@@ -1,41 +1,49 @@
 import { expect, test } from "@playwright/test";
-import { blockWhatsApp, firstLink, loginAsAdmin } from "./helpers";
+import { captureMail, firstLink, loginAsAdmin, mailOpened } from "./helpers";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 
 test.describe("cotizador: datos obligatorios", () => {
-  test("no se envía nada por WhatsApp si los datos están mal", async ({ page, context }) => {
-    await blockWhatsApp(page);
-    const waRequests: string[] = [];
-    context.on("request", (r) => r.url().startsWith("https://wa.me/") && waRequests.push(r.url()));
+  test("no se abre el correo si los datos están mal", async ({ page }) => {
+    await captureMail(page);
     const saves: string[] = [];
     page.on("request", (r) => r.method() === "POST" && saves.push(r.url()));
 
     await page.goto("/");
     await page.getByRole("button", { name: /Página web/ }).click();
+    await page.getByRole("button", { name: "Siguiente" }).click();
+    await page.getByRole("button", { name: "Siguiente" }).click();
 
-    // Required marks: name, business and timeline; the note has none and does not say "opcional"
+    // Required marks: name, business, email, WhatsApp and timeline; the note has none and does not say "opcional"
     await expect(page.locator("label[for=cliente-nombre]")).toHaveText("Tu nombre *");
     await expect(page.locator("label[for=cliente-negocio]")).toHaveText("Negocio *");
+    await expect(page.locator("label[for=cliente-correo]")).toHaveText("Correo *");
+    await expect(page.locator("label[for=cliente-telefono]")).toHaveText("WhatsApp *");
     await expect(page.getByText(/^Plazo \*$/)).toBeVisible();
     await expect(page.getByText("Nota", { exact: true })).toBeVisible();
     await expect(page.getByText(/opcional/i)).toHaveCount(0);
 
     const name = page.getByLabel("Tu nombre");
     const business = page.getByLabel("Negocio");
-    const send = page.locator("aside").getByRole("link", { name: "Enviar propuesta por WhatsApp" });
+    const email = page.getByLabel("Correo");
+    const phone = page.getByLabel("WhatsApp");
+    const send = page.locator("aside").last().getByRole("link", { name: "Enviar cotización por correo" });
 
     // Empty
     await send.click();
     await expect(page.getByText("Escribe tu nombre.")).toBeVisible();
     await expect(page.getByText("Escribe el nombre de tu negocio.")).toBeVisible();
+    await expect(page.getByText("Escribe tu correo.")).toBeVisible();
+    await expect(page.getByText("Escribe el número de WhatsApp.")).toBeVisible();
     await expect(name).toBeFocused();
     await expect(name).toHaveAttribute("aria-invalid", "true");
 
     // Numbers and symbols are not allowed in the name
+    await business.fill("Café Colonial");
+    await email.fill("laura@correo.com");
+    await phone.fill("809 555 0123");
     for (const bad of ["Laura123", "Laura@Méndez", "Laura_M", "L"]) {
       await name.fill(bad);
-      await business.fill("Café Colonial");
       await send.click();
       await expect(page.locator("#cliente-nombre-error")).toBeVisible();
     }
@@ -43,18 +51,32 @@ test.describe("cotizador: datos obligatorios", () => {
     await business.fill("!!!");
     await send.click();
     await expect(page.locator("#cliente-negocio-error")).toHaveText("Usa letras, números y solo estos signos: . , & ' -");
+    await business.fill("H&M Moda, S.R.L.");
 
-    expect(waRequests).toEqual([]);
+    // Email and WhatsApp must be real
+    await email.fill("laura@");
+    await send.click();
+    await expect(page.locator("#cliente-correo-error")).toHaveText("Ese correo no parece válido.");
+    await expect(email).toBeFocused();
+    await email.fill("laura@correo.com");
+    for (const bad of ["555", "abc-defg-hij"]) {
+      await phone.fill(bad);
+      await send.click();
+      await expect(page.locator("#cliente-telefono-error")).toBeVisible();
+    }
+
+    expect(await mailOpened(page)).toEqual([]);
     expect(saves).toEqual([]);
 
     // Valid data: accents, ñ and business signs are fine
-    await business.fill("H&M Moda, S.R.L.");
-    await expect(page.locator("#cliente-nombre-error")).toHaveCount(0);
-    await expect(page.locator("#cliente-negocio-error")).toHaveCount(0);
-    const wa = context.waitForEvent("request", (r) => r.url().startsWith("https://wa.me/"));
+    await phone.fill("+1 (809) 555-0123");
+    for (const id of ["nombre", "negocio", "correo", "telefono"])
+      await expect(page.locator(`#cliente-${id}-error`)).toHaveCount(0);
     await send.click();
-    expect(new URL((await wa).url()).searchParams.get("text")).toContain("Soy José Ñúñez (H&M Moda, S.R.L.)");
-    await expect(page.getByRole("heading", { name: "¡Propuesta lista!" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "¡Cotización lista!" })).toBeVisible();
+    const [mail] = await mailOpened(page);
+    expect(mail.body).toContain("Soy José Ñúñez (H&M Moda, S.R.L.)");
+    expect(mail.body).toContain("Correo: laura@correo.com");
   });
 });
 
@@ -178,7 +200,7 @@ test.describe("admin: validaciones", () => {
     await field.fill(original);
   });
 
-  test("ficha del cliente: WhatsApp abre su chat y Correo abre la hoja de mensaje", async ({ page }) => {
+  test("ficha del cliente: WhatsApp abre su chat y Correo abre la app de correo", async ({ page }) => {
     await page.goto("/admin/clientes");
     await page
       .getByRole("link", { name: /Café Colonial/ })
@@ -192,21 +214,10 @@ test.describe("admin: validaciones", () => {
     // WhatsApp goes to the client's own chat (809 number gets the country code 1)
     await expect(page.getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", "https://wa.me/18095550142");
 
-    // Correo opens the "Nuevo mensaje" sheet inside the app
-    await page.getByRole("button", { name: "Correo" }).click();
-    const sheet = page.getByRole("dialog", { name: "Nuevo mensaje" });
-    await expect(sheet).toBeVisible();
-    await expect(sheet.getByLabel("Mensaje")).toHaveValue(/^Hola Laura Méndez,/);
-    // Without Gmail configured it says so and offers the phone's mail app instead
-    await expect(sheet.getByText(/falta configurar/)).toBeVisible();
-    await expect(sheet.getByRole("button", { name: "Enviar correo" })).toBeDisabled();
-    await sheet.locator("#correo-para").fill("laura@cafecolonial.do");
-    await sheet.getByLabel("Asunto:").fill("Tu cotización");
-    await expect(sheet.getByRole("link", { name: "Abrir en mi app de correo" })).toHaveAttribute(
+    // Correo opens the phone's own mail app ("New message") with the greeting written
+    await expect(page.getByRole("link", { name: "Correo" })).toHaveAttribute(
       "href",
-      /^mailto:laura%40cafecolonial\.do\?subject=Tu%20cotizaci%C3%B3n&body=Hola/,
+      /^mailto:[^?]*\?body=Hola%20Laura%20M%C3%A9ndez%2C/,
     );
-    await page.keyboard.press("Escape");
-    await expect(sheet).toHaveCount(0);
   });
 });

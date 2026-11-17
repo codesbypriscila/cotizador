@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { blockWhatsApp, loginAsAdmin } from "./helpers";
+import { captureMail, E2E_ADMIN, loginAsAdmin, mailOpened } from "./helpers";
 
 const money = (s: string) => Number(s.replace(/[^\d.]/g, ""));
 
@@ -15,21 +15,34 @@ async function rateShown(page: Page) {
 test.describe("cliente en computadora", () => {
   test.use({ viewport: { width: 1440, height: 1000 } });
 
-  test("arma su proyecto, ve el total en las dos monedas y envía por WhatsApp", async ({ page, context }) => {
-    await blockWhatsApp(page);
+  test("va por pasos, ve el total en las dos monedas y envía la cotización por correo", async ({ page, context }) => {
+    await captureMail(page);
     await page.goto("/");
     await expect(page.getByText("Desarrolladora de Software")).toBeVisible();
     await expect(page.getByAltText("Priscila Pérez")).toBeVisible();
 
-    // Nothing chosen yet: sending asks for the project
-    const summary = page.locator("aside");
-    await expect(summary.getByText("Elige un tipo de proyecto para empezar.")).toBeVisible();
+    // The page starts at the left edge, not centered on wide screens
+    const steps = page.getByRole("navigation", { name: "Pasos" });
+    expect((await steps.boundingBox())!.x).toBeLessThan(80);
 
+    // Nothing chosen yet
+    const summary = page.locator("aside").last();
+    await expect(summary.getByText("Elige un tipo de proyecto para empezar.")).toBeVisible();
+    const next = page.getByRole("button", { name: "Siguiente" });
+    await expect(next).toBeDisabled();
+
+    // Step 1
     await page.getByRole("button", { name: /Página web/ }).click();
+    await expect(steps.getByRole("button", { name: /Proyecto/ })).toContainText("Página web");
+    await next.click();
+
+    // Step 2
+    await expect(page.getByRole("heading", { name: "Agrega extras" })).toBeVisible();
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
     await page.getByRole("switch", { name: "Reservas y citas" }).click();
     await page.getByRole("switch", { name: "Mantenimiento mensual" }).click();
+    await expect(steps.getByRole("button", { name: /Extras/ })).toContainText("2 extras");
 
     // US$: 500 + 2×50 + 250 = 850; maintenance goes apart
     await page.getByRole("button", { name: /^US\$$/ }).click();
@@ -48,36 +61,41 @@ test.describe("cliente en computadora", () => {
     );
     expect(Math.abs(totalRD - 850 * rate)).toBeLessThanOrEqual(850 * 0.005 + 1);
 
-    // Urgent adds 20 %
+    // Step 3
+    await next.click();
+    await expect(page.getByRole("heading", { name: "Tus datos" })).toBeVisible();
     await page.getByRole("button", { name: "Urgente +20%" }).click();
     await page.getByRole("button", { name: /^US\$$/ }).click();
     await expect(totalUS).toHaveText("US$1,020");
 
-    // Without a name it does not send
-    await summary.getByRole("link", { name: "Enviar propuesta por WhatsApp" }).click();
+    // Without the client's details it does not open the email
+    const send = summary.getByRole("link", { name: "Enviar cotización por correo" });
+    await send.click();
     await expect(summary.getByRole("alert")).toHaveText("Completa los campos marcados con *.");
+    expect(await mailOpened(page)).toEqual([]);
 
-    await page.getByPlaceholder("Ej.: Laura Méndez").fill("Cliente Prueba");
-    await page.getByPlaceholder("Ej.: Café Colonial").fill("Negocio E2E");
+    await page.getByLabel("Tu nombre").fill("Cliente Prueba");
+    await page.getByLabel("Negocio").fill("Negocio E2E");
+    await page.getByLabel("Correo").fill("cliente@prueba.test");
+    await page.getByLabel("WhatsApp").fill("809 555 0199");
     await page.getByPlaceholder("Cuéntame algo de tu proyecto").fill("Quiero vender por Instagram.");
+    await send.click();
 
-    const waRequest = context.waitForEvent("request", (r) => r.url().startsWith("https://wa.me/"));
-    await summary.getByRole("link", { name: "Enviar propuesta por WhatsApp" }).click();
-    const url = new URL((await waRequest).url());
-    expect(url.host).toBe("wa.me");
-    expect(url.pathname).toBe("/19089068105");
-    const text = url.searchParams.get("text")!;
-    expect(text).toContain("Soy Cliente Prueba (Negocio E2E)");
-    expect(text).toContain("Página web — US$500");
-    expect(text).toContain("Páginas adicionales ×2 — US$100");
-    expect(text).toContain("Plazo: Urgente (+20%)");
-    expect(text).toContain("Total estimado: US$1,020");
-    expect(text).toContain("Mantenimiento mensual: US$50/mes (aparte)");
-    expect(text).toContain("Quiero vender por Instagram.");
+    await expect(page.getByRole("heading", { name: "¡Cotización lista!" })).toBeVisible();
+    await expect(page.getByText("809 555 0199", { exact: true })).toBeVisible();
+    const [mail] = await mailOpened(page);
+    expect(mail.to).toBe(E2E_ADMIN.email); // the admin account's email
+    expect(mail.subject).toBe("Cotización: Página web — Negocio E2E");
+    expect(mail.body).toContain("Soy Cliente Prueba (Negocio E2E)");
+    expect(mail.body).toContain("Página web — US$500");
+    expect(mail.body).toContain("Páginas adicionales ×2 — US$100");
+    expect(mail.body).toContain("Plazo: Urgente (+20%)");
+    expect(mail.body).toContain("Total estimado: US$1,020");
+    expect(mail.body).toContain("Mantenimiento mensual: US$50/mes (aparte)");
+    expect(mail.body).toContain("Quiero vender por Instagram.");
+    expect(mail.body).toContain("Correo: cliente@prueba.test\nWhatsApp: 809 555 0199");
 
-    await expect(page.getByRole("heading", { name: "¡Propuesta lista!" })).toBeVisible();
-
-    // It arrives in the admin as a new proposal with the right total
+    // It arrives in the admin as a new proposal with the right total and the client's contact
     await loginAsAdmin(context);
     await page.goto("/admin");
     const card = page.getByRole("link", { name: /Negocio E2E/ });
@@ -88,6 +106,8 @@ test.describe("cliente en computadora", () => {
     await expect(page.getByText("Plazo urgente (+20%)").first()).toBeVisible();
     await page.goto("/admin");
     await expect(page.getByRole("link", { name: /Negocio E2E/ })).toHaveCount(0);
+    await page.goto("/admin/clientes?q=Negocio%20E2E");
+    await expect(page.getByText("809 555 0199").first()).toBeAttached();
   });
 });
 
@@ -95,7 +115,7 @@ test.describe("cliente en celular", () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
 
   test("va por los 3 pasos con el total abajo", async ({ page }) => {
-    await blockWhatsApp(page);
+    await captureMail(page);
     await page.goto("/");
     const next = page.getByRole("button", { name: "Siguiente" });
     await expect(next).toBeDisabled();
@@ -115,13 +135,17 @@ test.describe("cliente en celular", () => {
     await page.getByRole("button", { name: "Siguiente" }).click();
     await page.getByRole("button", { name: "Siguiente" }).click();
 
-    await expect(page.getByRole("heading", { name: "Tu propuesta" })).toBeVisible();
-    await page.getByRole("link", { name: "Enviar propuesta por WhatsApp" }).click();
+    await expect(page.getByRole("heading", { name: "Tus datos" })).toBeVisible();
+    const send = page.getByRole("link", { name: "Enviar cotización por correo" }).filter({ visible: true });
+    await send.click();
     await expect(page.getByText("Completa los campos marcados con *.").filter({ visible: true })).toBeVisible();
-    await page.getByPlaceholder("Ej.: Laura Méndez").fill("Cliente Celular");
-    await page.getByPlaceholder("Ej.: Café Colonial").fill("Negocio Celular");
-    await page.getByRole("link", { name: "Enviar propuesta por WhatsApp" }).click();
-    await expect(page.getByRole("heading", { name: "¡Propuesta lista!" })).toBeVisible();
+    await page.getByLabel("Tu nombre").fill("Cliente Celular");
+    await page.getByLabel("Negocio").fill("Negocio Celular");
+    await page.getByLabel("Correo").fill("celular@prueba.test");
+    await page.getByLabel("WhatsApp").fill("8295550100");
+    await send.click();
+    await expect(page.getByRole("heading", { name: "¡Cotización lista!" })).toBeVisible();
+    expect(await mailOpened(page)).toHaveLength(1);
     await page.getByRole("button", { name: "Hacer otra cotización" }).click();
     await expect(page.getByRole("heading", { name: "Cotiza tu proyecto" })).toBeVisible();
   });
