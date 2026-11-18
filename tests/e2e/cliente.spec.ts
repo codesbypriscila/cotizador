@@ -17,6 +17,8 @@ test.describe("cliente en computadora", () => {
 
   test("va por pasos, ve el total en las dos monedas y envía la cotización por correo", async ({ page, context }) => {
     await captureMail(page);
+    const saves: string[] = [];
+    page.on("request", (r) => r.method() === "POST" && saves.push(r.url()));
     await page.goto("/");
     await expect(page.getByText("Desarrolladora de Software")).toBeVisible();
     await expect(page.getByAltText("Priscila Pérez")).toBeVisible();
@@ -41,8 +43,11 @@ test.describe("cliente en computadora", () => {
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
     await page.getByRole("switch", { name: "Reservas y citas" }).click();
-    await page.getByRole("switch", { name: "Mantenimiento mensual" }).click();
     await expect(steps.getByRole("button", { name: /Extras/ })).toContainText("2 extras");
+
+    // Monthly maintenance is required: already included and it cannot be switched off
+    await expect(page.getByRole("switch", { name: "Mantenimiento mensual" })).toHaveCount(0);
+    await expect(page.getByText("Incluido", { exact: true })).toBeVisible();
 
     // US$: 500 + 2×50 + 250 = 850; maintenance goes apart
     await page.getByRole("button", { name: /^US\$$/ }).click();
@@ -81,8 +86,9 @@ test.describe("cliente en computadora", () => {
     await page.getByPlaceholder("Cuéntame algo de tu proyecto").fill("Quiero vender por Instagram.");
     await send.click();
 
-    await expect(page.getByRole("heading", { name: "¡Cotización lista!" })).toBeVisible();
-    await expect(page.getByText("809 555 0199", { exact: true })).toBeVisible();
+    // The mail app opens, but nothing reaches the admin until the client confirms
+    await expect(page.getByRole("heading", { name: "¿Ya enviaste el correo?" })).toBeVisible();
+    expect(saves).toEqual([]);
     const [mail] = await mailOpened(page);
     expect(mail.to).toBe(E2E_ADMIN.email); // the admin account's email
     expect(mail.subject).toBe("Cotización: Página web — Negocio E2E");
@@ -94,6 +100,10 @@ test.describe("cliente en computadora", () => {
     expect(mail.body).toContain("Mantenimiento mensual: US$50/mes (aparte)");
     expect(mail.body).toContain("Quiero vender por Instagram.");
     expect(mail.body).toContain("Correo: cliente@prueba.test\nWhatsApp: 809 555 0199");
+
+    await page.getByRole("button", { name: "Sí, ya lo envié" }).click();
+    await expect(page.getByRole("heading", { name: "¡Cotización enviada!" })).toBeVisible();
+    await expect(page.getByText("809 555 0199", { exact: true })).toBeVisible();
 
     // It arrives in the admin as a new proposal with the right total and the client's contact
     await loginAsAdmin(context);
@@ -144,8 +154,15 @@ test.describe("cliente en celular", () => {
     await page.getByLabel("Correo").fill("celular@prueba.test");
     await page.getByLabel("WhatsApp").fill("8295550100");
     await send.click();
-    await expect(page.getByRole("heading", { name: "¡Cotización lista!" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "¿Ya enviaste el correo?" })).toBeVisible();
     expect(await mailOpened(page)).toHaveLength(1);
+
+    // "Volver y cambiar algo" keeps what was typed
+    await page.getByRole("button", { name: "Volver y cambiar algo" }).click();
+    await expect(page.getByLabel("Tu nombre")).toHaveValue("Cliente Celular");
+    await send.click();
+    await page.getByRole("button", { name: "Sí, ya lo envié" }).click();
+    await expect(page.getByRole("heading", { name: "¡Cotización enviada!" })).toBeVisible();
     await page.getByRole("button", { name: "Hacer otra cotización" }).click();
     await expect(page.getByRole("heading", { name: "Cotiza tu proyecto" })).toBeVisible();
   });

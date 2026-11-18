@@ -380,6 +380,7 @@ const catalogSchema = z.object({
   maxPrice: money,
   unit: unit,
   visible: z.boolean(),
+  required: z.boolean(),
 });
 
 const digits = (v: FormDataEntryValue | null) => String(v ?? "").replace(/[^\d]/g, "");
@@ -396,10 +397,14 @@ export async function saveCatalogItem(id: string | null, _prev: unknown, form: F
     maxPrice: digits(form.get("maxPrice")) || digits(form.get("price")),
     unit: form.get("unit") ?? "ONCE",
     visible: form.get("visible") === "on",
+    required: form.get("required") === "on",
   });
   if (!parsed.success) return { error: "Escribe el nombre y el precio base." };
   const d = parsed.data;
-  if (d.kind === "PROJECT") d.unit = "ONCE";
+  if (d.kind === "PROJECT") {
+    d.unit = "ONCE";
+    d.required = false;
+  }
   if (id) {
     await prisma.catalogItem.update({ where: { id }, data: d });
   } else {

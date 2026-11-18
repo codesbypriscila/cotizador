@@ -37,6 +37,7 @@ export default async function CatalogPage({ searchParams }: PageProps<"/admin/ca
           maxPrice: 0,
           unit: "ONCE",
           visible: true,
+          required: false,
         }
       : null;
 
@@ -133,6 +134,7 @@ export default async function CatalogPage({ searchParams }: PageProps<"/admin/ca
                     <span className="text-sm font-semibold break-words">{it.name}</span>
                     <span className="text-xs text-muted">
                       {!it.visible && <span className="font-semibold text-[#C53030]">Oculto · </span>}
+                      {it.required && <span className="font-semibold text-accent-ink">Obligatorio · </span>}
                       <span className="2xl:hidden">
                         Mercado {formatUSDShort(it.minPrice)} – {formatUSDShort(it.maxPrice).replace("US$", "")}
                       </span>

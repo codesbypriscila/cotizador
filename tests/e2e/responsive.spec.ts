@@ -24,12 +24,7 @@ for (const width of WIDTHS) {
     await page.getByRole("button", { name: /^RD\$$/ }).click();
     await page.getByRole("button", { name: "Siguiente" }).click();
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
-    for (const name of [
-      "Reservas y citas",
-      "Notificaciones por WhatsApp",
-      "Dominio + hosting (1er año)",
-      "Mantenimiento mensual",
-    ])
+    for (const name of ["Reservas y citas", "Notificaciones por WhatsApp", "Dominio + hosting (1er año)"])
       await page.getByRole("switch", { name }).click();
     await check(page, "cotizador · extras", report);
     await page.getByRole("button", { name: "Siguiente" }).click();

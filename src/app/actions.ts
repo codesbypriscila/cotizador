@@ -64,14 +64,21 @@ export async function submitProposal(input: ProposalInput): Promise<{ ok: boolea
   const data = parsed.data;
 
   const ids = [data.projectId, ...data.extras.map((e) => e.id)];
-  const items = await prisma.catalogItem.findMany({ where: { id: { in: ids }, visible: true } });
+  // Required extras (like monthly maintenance) always go in, even if the browser left them out.
+  const items = await prisma.catalogItem.findMany({
+    where: { visible: true, OR: [{ id: { in: ids } }, { kind: "EXTRA", required: true }] },
+    orderBy: { sortOrder: "asc" },
+  });
   const project = items.find((i) => i.id === data.projectId && i.kind === "PROJECT");
   if (!project) return { ok: false, error: "Ese tipo de proyecto ya no está disponible. Elige otro." };
 
-  const extras = data.extras.flatMap((e) => {
-    const item = items.find((i) => i.id === e.id && i.kind === "EXTRA");
-    return item ? [{ item, quantity: item.unit === "EACH" ? e.quantity : 1 }] : [];
-  });
+  const extras = items
+    .filter((i) => i.kind === "EXTRA")
+    .flatMap((item) => {
+      const chosen = data.extras.find((e) => e.id === item.id);
+      if (!chosen && !item.required) return [];
+      return [{ item, quantity: item.unit === "EACH" ? (chosen?.quantity ?? 1) : 1 }];
+    });
 
   const clientName = data.business || data.name;
   const existing = await prisma.client.findFirst({

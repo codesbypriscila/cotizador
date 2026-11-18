@@ -19,6 +19,7 @@ export type BuilderItem = {
   icon: string;
   price: number;
   unit: "ONCE" | "EACH" | "MONTHLY";
+  required: boolean; // always included, the client cannot remove it
 };
 
 type Settings = {
@@ -60,7 +61,9 @@ export function QuoteBuilder({
   const [sent, setSent] = useState<SentEmail | null>(null);
   const [currency, setCurrency] = useState<Currency>("DOP");
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [qty, setQty] = useState<Record<string, number>>({});
+  // Required extras (like monthly maintenance) start included and cannot go below 1.
+  const requiredQty = () => Object.fromEntries(extras.filter((e) => e.required).map((e) => [e.id, 1]));
+  const [qty, setQty] = useState<Record<string, number>>(requiredQty);
   const [name, setName] = useState("");
   const [business, setBusiness] = useState("");
   const [email, setEmail] = useState("");
@@ -133,13 +136,15 @@ export function QuoteBuilder({
   }
 
   function setQuantity(id: string, value: number) {
-    setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(50, value)) }));
+    const min = extras.find((e) => e.id === id)?.required ? 1 : 0;
+    setQty((q) => ({ ...q, [id]: Math.max(min, Math.min(50, value)) }));
   }
 
   /**
    * The link itself opens the mail app (that is what makes the phone show its
    * "New message" sheet). It is blocked until every required field is valid.
-   * The proposal is saved for the admin at the same time.
+   * Nothing is saved yet: the quote reaches the admin only when the client
+   * confirms they sent the email.
    */
   function onSend(e: React.MouseEvent<HTMLAnchorElement>) {
     if (!canSend || !project) {
@@ -153,28 +158,35 @@ export function QuoteBuilder({
       }
       return;
     }
-    submitProposal({
-      projectId: project.id,
-      extras: chosenExtras.map((x) => ({ id: x.id, quantity: qty[x.id] })),
-      name: tidy(name),
-      business: tidy(business),
-      email: email.trim(),
-      phone: phone.trim(),
-      urgent,
-      note,
-      website,
-      currency,
-    }).catch(() => {
-      // The email already carries the quote; the admin copy is a bonus.
-    });
     setSent({ ...outgoing, phone: phone.trim() });
     window.scrollTo({ top: 0 });
+  }
+
+  /** "Sí, ya lo envié": saves the quote so it shows up in the admin. */
+  async function confirmSent(): Promise<{ ok: boolean; error?: string }> {
+    if (!project) return { ok: false };
+    try {
+      return await submitProposal({
+        projectId: project.id,
+        extras: chosenExtras.map((x) => ({ id: x.id, quantity: qty[x.id] })),
+        name: tidy(name),
+        business: tidy(business),
+        email: email.trim(),
+        phone: phone.trim(),
+        urgent,
+        note,
+        website,
+        currency,
+      });
+    } catch {
+      return { ok: false, error: "No se pudo confirmar. Revisa tu conexión e inténtalo otra vez." };
+    }
   }
 
   function reset() {
     setSent(null);
     setProjectId(null);
-    setQty({});
+    setQty(requiredQty());
     setNote("");
     setUrgent(false);
     setShowErrors(false);
@@ -205,7 +217,7 @@ export function QuoteBuilder({
     return (
       <div className="min-h-dvh w-full">
         <Header settings={settings} currency={currency} onCurrency={setCurrency} />
-        <Sent email={sent} onReset={reset} />
+        <Sent email={sent} onConfirm={confirmSent} onBack={() => setSent(null)} onReset={reset} />
       </div>
     );
   }
@@ -360,7 +372,14 @@ export function QuoteBuilder({
                   return e.unit === "EACH" ? (
                     <div key={e.id} className={rowClass}>
                       {body}
-                      <Stepper value={q} label={e.name} onChange={(v) => setQuantity(e.id, v)} />
+                      <Stepper value={q} min={e.required ? 1 : 0} label={e.name} onChange={(v) => setQuantity(e.id, v)} />
+                    </div>
+                  ) : e.required ? (
+                    <div key={e.id} className={rowClass}>
+                      {body}
+                      <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
+                        Incluido
+                      </span>
                     </div>
                   ) : (
                     <div key={e.id} className={cx(rowClass, "cursor-pointer")} onClick={() => setQuantity(e.id, on ? 0 : 1)}>
@@ -597,13 +616,23 @@ function MobileStepNav({ step, onBack }: { step: Step; onBack: () => void }) {
   );
 }
 
-function Stepper({ value, label, onChange }: { value: number; label: string; onChange: (v: number) => void }) {
+function Stepper({
+  value,
+  min = 0,
+  label,
+  onChange,
+}: {
+  value: number;
+  min?: number;
+  label: string;
+  onChange: (v: number) => void;
+}) {
   return (
     <div className="flex shrink-0 items-center gap-2 rounded-full bg-bg p-1">
       <button
         type="button"
         aria-label={`Quitar ${label}`}
-        disabled={value === 0}
+        disabled={value <= min}
         onClick={() => onChange(value - 1)}
         className="grid size-7 place-items-center rounded-full bg-surface disabled:opacity-40"
       >
@@ -702,21 +731,86 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   );
 }
 
-function Sent({ email, onReset }: { email: SentEmail; onReset: () => void }) {
+/**
+ * After the mail app opens: the page cannot know if the email was really sent,
+ * so it asks. The quote only reaches the admin when the client confirms.
+ */
+function Sent({
+  email,
+  onConfirm,
+  onBack,
+  onReset,
+}: {
+  email: SentEmail;
+  onConfirm: () => Promise<{ ok: boolean; error?: string }>;
+  onBack: () => void;
+  onReset: () => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"ask" | "saving" | "done">("ask");
+  const [error, setError] = useState<string | null>(null);
   const gmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email.to)}&su=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
+
+  async function confirm() {
+    if (state !== "ask") return;
+    setState("saving");
+    setError(null);
+    const res = await onConfirm();
+    if (res.ok) {
+      setState("done");
+      window.scrollTo({ top: 0 });
+    } else {
+      setState("ask");
+      setError(res.error ?? "No se pudo confirmar. Inténtalo otra vez.");
+    }
+  }
+
+  if (state === "done") {
+    return (
+      <main className="flex max-w-xl flex-col gap-5 px-4 pt-2 pb-10 md:px-8 xl:px-10">
+        <div className="flex items-center gap-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-white">
+            <Check size={22} strokeWidth={2.5} />
+          </span>
+          <h1 className="text-2xl font-bold tracking-[-0.03em]">¡Cotización enviada!</h1>
+        </div>
+        <p className="text-sm leading-relaxed text-ink-2">
+          Gracias. La reviso y te escribo por WhatsApp al <b>{email.phone}</b> para decirte si fue aceptada.
+        </p>
+        <button type="button" onClick={onReset} className={buttonClass("outline", "h-11 w-full text-sm")}>
+          Hacer otra cotización
+        </button>
+      </main>
+    );
+  }
+
   return (
     <main className="flex max-w-xl flex-col gap-5 px-4 pt-2 pb-10 md:px-8 xl:px-10">
       <div className="flex items-center gap-3">
-        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-white">
-          <Check size={22} strokeWidth={2.5} />
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent-soft text-accent-ink">
+          <Mail size={21} />
         </span>
-        <h1 className="text-2xl font-bold tracking-[-0.03em]">¡Cotización lista!</h1>
+        <h1 className="text-2xl font-bold tracking-[-0.03em]">¿Ya enviaste el correo?</h1>
       </div>
       <p className="text-sm leading-relaxed text-ink-2">
-        Se abrió tu app de correo con la cotización escrita: solo toca <b>enviar</b>. La reviso y te escribo por WhatsApp al{" "}
-        <b>{email.phone}</b> para decirte si fue aceptada.
+        Se abrió tu app de correo con la cotización escrita. Toca <b>enviar</b> allí y después confirma aquí para que me llegue.
       </p>
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={state === "saving"}
+          aria-busy={state === "saving"}
+          className={buttonClass("primary", "w-full")}
+        >
+          <Check size={18} strokeWidth={2.5} /> {state === "saving" ? "Confirmando…" : "Sí, ya lo envié"}
+        </button>
+        {error && (
+          <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
+            {error}
+          </p>
+        )}
+      </div>
 
       {/* The message, the way it looks in the mail app */}
       <div className="card overflow-hidden rounded-[20px]">
@@ -732,8 +826,9 @@ function Sent({ email, onReset }: { email: SentEmail; onReset: () => void }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <a href={mailtoLink(email.to, email)} className={buttonClass("primary", "w-full")}>
-          <Mail size={18} /> Abrir mi correo otra vez
+        <span className="text-xs font-semibold text-muted">¿No se abrió o lo cerraste sin enviar?</span>
+        <a href={mailtoLink(email.to, email)} className={buttonClass("soft", "h-11 w-full text-sm")}>
+          <Mail size={16} /> Abrir mi correo otra vez
         </a>
         <div className="grid grid-cols-2 gap-2">
           <a
@@ -756,8 +851,8 @@ function Sent({ email, onReset }: { email: SentEmail; onReset: () => void }) {
             <Copy size={15} /> {copied ? "¡Copiado!" : "Copiar mensaje"}
           </button>
         </div>
-        <button type="button" onClick={onReset} className={buttonClass("outline", "h-11 w-full text-sm")}>
-          Hacer otra cotización
+        <button type="button" onClick={onBack} className={buttonClass("outline", "h-11 w-full text-sm")}>
+          <ChevronLeft size={16} /> Volver y cambiar algo
         </button>
       </div>
     </main>

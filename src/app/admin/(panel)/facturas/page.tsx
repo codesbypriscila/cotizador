@@ -71,7 +71,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/admin/f
       ) : (
         <>
           {/* Phone and iPad portrait: cards */}
-          <div className="grid gap-3 md:grid-cols-2 lg:hidden">
+          <div className="grid gap-2 md:grid-cols-2 lg:hidden">
             {list.map((i) => (
               <DocCard
                 key={i.id}

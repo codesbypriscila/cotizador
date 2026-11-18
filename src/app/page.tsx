@@ -22,6 +22,7 @@ export default async function Home() {
     icon: i.icon,
     price: i.price,
     unit: i.unit,
+    required: i.kind === "EXTRA" && i.required,
   });
 
   return (

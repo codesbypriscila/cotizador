@@ -147,27 +147,27 @@ export function DocCard({
     <Link
       href={href}
       className={cx(
-        "card flex gap-3 rounded-[20px] border-[1.5px] p-3.5 transition-shadow lg:p-4 hover:shadow-[0_10px_32px_rgb(14_15_18/0.09)]",
+        "card flex gap-2.5 rounded-2xl border-[1.5px] px-3 py-2.5 transition-shadow lg:gap-3 lg:rounded-[20px] lg:p-4 hover:shadow-[0_10px_32px_rgb(14_15_18/0.09)]",
         highlight ? "border-accent" : "border-transparent",
       )}
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-bg text-ink-2">
-        <Icon size={17} strokeWidth={1.8} />
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-bg text-ink-2 lg:size-9">
+        <Icon size={15} strokeWidth={1.8} />
       </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-start justify-between gap-3">
-          <span className="min-w-0 text-sm font-semibold break-words">{title}</span>
-          <span className="text-sm font-semibold whitespace-nowrap tabular-nums">{amount}</span>
+          <span className="min-w-0 text-[13px] font-semibold break-words lg:text-sm">{title}</span>
+          <span className="text-[13px] font-semibold whitespace-nowrap tabular-nums lg:text-sm">{amount}</span>
         </span>
-        <span className="truncate text-[13px] text-muted">{subtitle}</span>
-        <span className="my-2 h-px bg-line" />
-        <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-ink-2">
-            <NumberIcon size={13} className="shrink-0 text-muted" />
+        <span className="truncate text-xs text-muted lg:text-[13px]">{subtitle}</span>
+        <span className="my-2 hidden h-px bg-line lg:block" />
+        <span className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 lg:mt-0">
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-ink-2 lg:text-xs">
+            <NumberIcon size={12} className="shrink-0 text-muted" />
             <span className="truncate">{number}</span>
-            {status && <StatusBadge status={status} />}
+            {status && <StatusBadge status={status} size="sm" />}
           </span>
-          <span className="text-xs whitespace-nowrap text-muted">{date}</span>
+          <span className="text-[11px] whitespace-nowrap text-muted lg:text-xs">{date}</span>
         </span>
       </span>
     </Link>

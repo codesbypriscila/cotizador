@@ -122,6 +122,7 @@ async function main() {
           minPrice: usd(min),
           maxPrice: usd(max),
           unit,
+          required: name === "Mantenimiento mensual",
           sortOrder: i,
         })),
       ],

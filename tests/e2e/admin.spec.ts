@@ -162,6 +162,13 @@ test.describe("flujo completo del admin", () => {
 
   test("catálogo: crear, ordenar, ocultar y borrar alimenta el cotizador", async ({ page }) => {
     await page.goto("/admin/catalogo?tipo=extras&nuevo=1");
+    // Monthly maintenance comes marked as required
+    await expect(
+      page
+        .getByRole("link", { name: /Mantenimiento mensual/ })
+        .filter({ visible: true })
+        .first(),
+    ).toContainText("Obligatorio");
     const form = page.locator("aside form");
     await form.locator('input[name="name"]').fill("SEO básico");
     await form.locator('input[name="description"]').fill("Para salir en Google");

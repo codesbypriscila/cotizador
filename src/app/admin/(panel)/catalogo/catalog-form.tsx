@@ -22,6 +22,7 @@ export type CatalogValues = {
   maxPrice: number;
   unit: Unit;
   visible: boolean;
+  required: boolean;
 };
 
 export function CatalogForm({
@@ -131,6 +132,15 @@ export function CatalogForm({
           </div>
         </Field>
       )}
+      {isExtra && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex flex-col">
+            <span className="text-sm font-medium">Obligatorio</span>
+            <span className="text-xs text-muted">Siempre va incluido; el cliente no lo puede quitar.</span>
+          </span>
+          <Toggle checked={v.required} onChange={(b) => set("required", b)} label="Obligatorio" name="required" />
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Visible en el cotizador</span>
         <Toggle checked={v.visible} onChange={(b) => set("visible", b)} label="Visible en el cotizador" name="visible" />
@@ -153,9 +163,13 @@ export function CatalogForm({
                     : `+${formatUSD(v.price)}`}
               </span>
             </span>
-            <span className="relative h-7 w-12 rounded-full bg-accent p-[3px]">
-              <span className="block size-[22px] translate-x-5 rounded-full bg-white" />
-            </span>
+            {v.required ? (
+              <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">Incluido</span>
+            ) : (
+              <span className="relative h-7 w-12 rounded-full bg-accent p-[3px]">
+                <span className="block size-[22px] translate-x-5 rounded-full bg-white" />
+              </span>
+            )}
           </div>
         ) : (
           <div className="relative flex w-[200px] flex-col gap-3 rounded-[22px] border-2 border-accent bg-surface p-4 shadow-card">

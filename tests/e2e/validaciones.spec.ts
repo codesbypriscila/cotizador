@@ -73,10 +73,12 @@ test.describe("cotizador: datos obligatorios", () => {
     for (const id of ["nombre", "negocio", "correo", "telefono"])
       await expect(page.locator(`#cliente-${id}-error`)).toHaveCount(0);
     await send.click();
-    await expect(page.getByRole("heading", { name: "¡Cotización lista!" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "¿Ya enviaste el correo?" })).toBeVisible();
     const [mail] = await mailOpened(page);
     expect(mail.body).toContain("Soy José Ñúñez (H&M Moda, S.R.L.)");
     expect(mail.body).toContain("Correo: laura@correo.com");
+    // Still nothing saved: only "Sí, ya lo envié" saves it
+    expect(saves).toEqual([]);
   });
 });
 

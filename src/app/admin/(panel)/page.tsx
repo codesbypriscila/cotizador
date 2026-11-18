@@ -189,7 +189,7 @@ export default async function AdminHome() {
           </table>
         </div>
 
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2">
           <SectionTitle
             action={
               <Link href="/admin/cotizaciones?origen=web" className="text-[13px] font-medium text-accent-ink lg:hidden">

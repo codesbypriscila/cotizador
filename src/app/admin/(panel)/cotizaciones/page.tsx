@@ -53,7 +53,7 @@ export default async function QuotesPage({ searchParams }: PageProps<"/admin/cot
           {q ? "Prueba con otra búsqueda." : "Crea una con el botón +."}
         </EmptyState>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-2 md:grid-cols-2 lg:gap-3 xl:grid-cols-3">
           {list.map((x) => (
             <DocCard
               key={x.id}

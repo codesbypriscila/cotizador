@@ -16,11 +16,12 @@ const BADGE: Record<DocStatus, string> = {
   REJECTED: "bg-[#F1F2F4] border-[#E2E4E8] text-[#8A8F98]",
 };
 
-export function StatusBadge({ status, className }: { status: DocStatus; className?: string }) {
+export function StatusBadge({ status, className, size }: { status: DocStatus; className?: string; size?: "sm" }) {
   return (
     <span
       className={cx(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center rounded-full border font-medium whitespace-nowrap",
+        size === "sm" ? "px-2 py-px text-[10px] lg:px-2.5 lg:py-0.5 lg:text-xs" : "px-2.5 py-0.5 text-xs",
         BADGE[status],
         className,
       )}
