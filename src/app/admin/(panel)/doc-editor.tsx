@@ -1,20 +1,23 @@
 "use client";
 
-import { Check, ChevronLeft, Copy, MessageCircle, Plus, ReceiptText, Trash, X } from "lucide-react";
+import { Check, ChevronLeft, Copy, HandCoins, Mail, MessageCircle, Plus, ReceiptText, Trash, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Req } from "@/components/form";
 import { CatalogIcon } from "@/components/icon";
+import { Modal } from "@/components/modal";
+import { useAdminCurrency, useMoney } from "@/components/money";
 import { buttonClass, cx, inputClass, StatusBadge, Toggle } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { MoneyInput } from "@/components/money-input";
+import { mailtoLink } from "@/lib/mail";
 import { formatDOP, formatUSD } from "@/lib/money";
-import { computeTotals, type DocStatus } from "@/lib/totals";
+import { computeTotals, DEPOSIT_PCT, type DocStatus } from "@/lib/totals";
 import { phoneError } from "@/lib/validation";
-import { whatsappLink } from "@/lib/whatsapp";
-import { convertQuoteToInvoice, deleteQuote, duplicateQuote, saveInvoice, saveQuote } from "../actions";
+import { phoneForWhatsApp, whatsappLink } from "@/lib/whatsapp";
+import { convertQuoteToInvoice, deleteQuote, duplicateQuote, registerDeposit, saveInvoice, saveQuote } from "../actions";
 
 type Unit = "ONCE" | "EACH" | "MONTHLY";
 export type EditorLine = {
@@ -26,7 +29,7 @@ export type EditorLine = {
   unitPrice: number;
   unit: Unit;
 };
-export type EditorClient = { id: string; name: string; contact: string; phone: string };
+export type EditorClient = { id: string; name: string; contact: string; phone: string; email: string };
 export type EditorCatalogItem = {
   id: string;
   kind: "PROJECT" | "EXTRA";
@@ -37,7 +40,8 @@ export type EditorCatalogItem = {
   unit: Unit;
 };
 
-type QuoteFields = { status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED"; urgent: boolean; validUntil: string | null };
+export type QuoteStatusValue = "DRAFT" | "PENDING" | "SENT" | "ACCEPTED" | "REJECTED";
+type QuoteFields = { status: QuoteStatusValue; urgent: boolean; validUntil: string | null; deadline: string | null };
 type InvoiceFields = { sent: boolean; issuedAt: string; dueAt: string };
 
 export type EditorProps = {
@@ -56,10 +60,12 @@ export type EditorProps = {
   };
   fromPublic?: boolean;
   invoiceId?: string | null; // quote already converted
+  depositPaid?: boolean; // the invoice already has a payment (the 30 % deposit)
   displayStatus?: DocStatus; // invoices: derived status
 } & ({ kind: "quote"; quote: QuoteFields } | { kind: "invoice"; invoice: InvoiceFields });
 
 const QUOTE_STATUS: { value: QuoteFields["status"]; label: string }[] = [
+  { value: "PENDING", label: "Pendiente" },
   { value: "DRAFT", label: "Borrador" },
   { value: "SENT", label: "Enviada" },
   { value: "ACCEPTED", label: "Aceptada" },
@@ -72,6 +78,8 @@ const digits = (s: string) => Number(s.replace(/[^\d]/g, "") || 0);
 
 export function DocEditor(props: EditorProps) {
   const router = useRouter();
+  const money = useMoney();
+  const currency = useAdminCurrency();
   const isQuote = props.kind === "quote";
   const [clientId, setClientId] = useState<string>(props.initial.clientId ?? (props.clients.length ? "" : "new"));
   const [newClient, setNewClient] = useState({ name: "", phone: "" });
@@ -80,7 +88,9 @@ export function DocEditor(props: EditorProps) {
   const [discountPct, setDiscountPct] = useState(props.initial.discountPct);
   const [applyTax, setApplyTax] = useState(props.initial.applyTax);
   const [notes, setNotes] = useState(props.initial.notes);
-  const [quote, setQuote] = useState<QuoteFields>(isQuote ? props.quote : { status: "DRAFT", urgent: false, validUntil: null });
+  const [quote, setQuote] = useState<QuoteFields>(
+    isQuote ? props.quote : { status: "DRAFT", urgent: false, validUntil: null, deadline: null },
+  );
   const [invoice, setInvoice] = useState<InvoiceFields>(
     props.kind === "invoice" ? props.invoice : { sent: false, issuedAt: "", dueAt: "" },
   );
@@ -292,12 +302,43 @@ export function DocEditor(props: EditorProps) {
               </div>
             )}
             {client && (
-              <p className="text-[13px] text-muted">
-                {[client.contact, client.phone].filter(Boolean).join(" · ") || "Sin teléfono"} ·{" "}
-                <Link href={`/admin/clientes/${client.id}`} className="font-medium text-accent-ink">
-                  Ver ficha
-                </Link>
-              </p>
+              <div className="flex flex-col gap-2 rounded-2xl bg-bg p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-col gap-0.5 text-[13px]">
+                  <span className="font-semibold">{client.contact || client.name}</span>
+                  <span className="break-all text-ink-2">
+                    WhatsApp: {client.phone || <span className="text-muted">sin número</span>}
+                  </span>
+                  <span className="break-all text-ink-2">
+                    Correo: {client.email || <span className="text-muted">sin correo</span>}
+                  </span>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-1.5">
+                  {client.phone && !phoneError(client.phone) && (
+                    <a
+                      href={`https://wa.me/${phoneForWhatsApp(client.phone)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-9 items-center gap-1.5 rounded-full bg-accent px-3.5 text-xs font-semibold text-white"
+                    >
+                      <MessageCircle size={14} /> WhatsApp
+                    </a>
+                  )}
+                  {client.email && (
+                    <a
+                      href={mailtoLink(client.email, { body: `Hola ${client.contact || client.name},\n\n` })}
+                      className="flex h-9 items-center gap-1.5 rounded-full bg-surface px-3.5 text-xs font-semibold shadow-card"
+                    >
+                      <Mail size={14} /> Correo
+                    </a>
+                  )}
+                  <Link
+                    href={`/admin/clientes/${client.id}`}
+                    className="flex h-9 items-center rounded-full px-2 text-xs font-semibold text-accent-ink"
+                  >
+                    Ver ficha
+                  </Link>
+                </div>
+              </div>
             )}
 
             {isQuote ? (
@@ -327,6 +368,16 @@ export function DocEditor(props: EditorProps) {
                     type="date"
                     value={quote.validUntil ?? ""}
                     onChange={(e) => setQuote((q) => ({ ...q, validUntil: e.target.value || null }))}
+                    className={inputClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5 md:w-44">
+                  <span className="text-[13px] font-semibold text-ink-2">Fecha de entrega</span>
+                  <input
+                    type="date"
+                    aria-label="Fecha de entrega"
+                    value={quote.deadline ?? ""}
+                    onChange={(e) => setQuote((q) => ({ ...q, deadline: e.target.value || null }))}
                     className={inputClass}
                   />
                 </label>
@@ -401,7 +452,7 @@ export function DocEditor(props: EditorProps) {
                         <span className="text-xs text-muted">{c.kind === "PROJECT" ? "Proyecto" : "Extra"}</span>
                       </span>
                       <span className="text-sm font-medium tabular-nums">
-                        {formatUSD(c.price)}
+                        {money(c.price)}
                         {c.unit === "MONTHLY" ? "/mes" : ""}
                       </span>
                     </button>
@@ -439,7 +490,7 @@ export function DocEditor(props: EditorProps) {
                         className="w-full resize-none bg-transparent text-xs text-muted outline-none [field-sizing:content]"
                       />
                     </div>
-                    <span className="text-sm font-semibold tabular-nums md:hidden">{formatUSD(it.quantity * it.unitPrice)}</span>
+                    <span className="text-sm font-semibold tabular-nums md:hidden">{money(it.quantity * it.unitPrice)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -468,7 +519,7 @@ export function DocEditor(props: EditorProps) {
                       <option value="MONTHLY">/mes</option>
                     </select>
                     <span className="w-24 text-right text-sm font-semibold tabular-nums max-md:hidden">
-                      {formatUSD(it.quantity * it.unitPrice)}
+                      {money(it.quantity * it.unitPrice)}
                     </span>
                     <button
                       type="button"
@@ -511,18 +562,18 @@ export function DocEditor(props: EditorProps) {
         {/* Totals + preview */}
         <div className="flex flex-col gap-5">
           <section className="card flex flex-col gap-3.5 p-[22px]">
-            <Row label="Subtotal" value={formatUSD(totals.subtotal)} />
+            <Row label="Subtotal" value={money(totals.subtotal)} />
             {isQuote && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-ink-2">Plazo urgente (+20%)</span>
                 <Toggle checked={quote.urgent} onChange={(urgent) => setQuote((q) => ({ ...q, urgent }))} label="Plazo urgente" />
               </div>
             )}
-            {totals.urgentFee > 0 && <Row label="Recargo urgente" value={formatUSD(totals.urgentFee)} />}
+            {totals.urgentFee > 0 && <Row label="Recargo urgente" value={money(totals.urgentFee)} />}
             <div className="flex items-center justify-between">
               <span className="text-sm text-ink-2">Descuento</span>
               <span className="flex items-center gap-2">
-                {totals.discount > 0 && <span className="text-sm font-medium text-[#1E8A4C]">−{formatUSD(totals.discount)}</span>}
+                {totals.discount > 0 && <span className="text-sm font-medium text-[#1E8A4C]">−{money(totals.discount)}</span>}
                 <span className="flex h-9 w-16 items-center rounded-[10px] bg-bg px-2 text-[13px]">
                   <input
                     value={discountPct}
@@ -538,19 +589,27 @@ export function DocEditor(props: EditorProps) {
             <div className="flex items-center justify-between">
               <span className="text-sm text-ink-2">ITBIS 18%</span>
               <span className="flex items-center gap-2">
-                {totals.tax > 0 && <span className="text-sm font-medium">{formatUSD(totals.tax)}</span>}
+                {totals.tax > 0 && <span className="text-sm font-medium">{money(totals.tax)}</span>}
                 <Toggle checked={applyTax} onChange={setApplyTax} label="Aplicar ITBIS" />
               </span>
             </div>
             <hr className="border-line" />
             <div className="flex items-end justify-between">
               <span className="font-bold">Total</span>
-              <span className="text-[22px] font-bold tracking-[-0.03em] tabular-nums lg:text-[30px]">
-                {formatUSD(totals.total)}
-              </span>
+              <span className="text-[22px] font-bold tracking-[-0.03em] tabular-nums lg:text-[30px]">{money(totals.total)}</span>
             </div>
-            <span className="-mt-2 text-right text-xs text-muted">≈ {formatDOP(totals.total, props.rate)}</span>
-            {totals.monthly > 0 && <Row label="Mensual (aparte)" value={`${formatUSD(totals.monthly)}/mes`} />}
+            <span className="-mt-2 text-right text-xs text-muted">
+              {currency === "USD" ? `≈ ${formatDOP(totals.total, props.rate)}` : `= ${formatUSD(totals.total)}`}
+            </span>
+            {totals.monthly > 0 && <Row label="Mensual (aparte)" value={`${money(totals.monthly)}/mes`} />}
+            {isQuote && props.id && quote.status === "ACCEPTED" && (
+              <DepositBox
+                quoteId={props.id}
+                amount={Math.round((totals.total * DEPOSIT_PCT) / 100)}
+                paid={Boolean(props.depositPaid)}
+                invoiceId={props.invoiceId ?? null}
+              />
+            )}
           </section>
 
           <section className="flex flex-col gap-2.5 rounded-3xl bg-[#EFEAE2] p-[18px]">
@@ -595,12 +654,12 @@ export function DocEditor(props: EditorProps) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => save({ markSent: true })}
-              className={buttonClass("primary", "flex-1 lg:h-[46px] lg:text-sm")}
+              className={buttonClass("primary", "flex-1 whitespace-nowrap lg:h-[46px] lg:text-sm")}
             >
               <MessageCircle size={18} /> Enviar<span className="max-lg:hidden"> por WhatsApp</span>
             </a>
           ) : (
-            <button type="button" disabled className={buttonClass("primary", "flex-1 lg:h-[46px] lg:text-sm")}>
+            <button type="button" disabled className={buttonClass("primary", "flex-1 whitespace-nowrap lg:h-[46px] lg:text-sm")}>
               <MessageCircle size={18} /> Enviar
             </button>
           )}
@@ -640,6 +699,82 @@ export function DocEditor(props: EditorProps) {
       </>
     );
   }
+}
+
+/** 30 % deposit before starting the work: asks first, then records it on the invoice. */
+function DepositBox({
+  quoteId,
+  amount,
+  paid,
+  invoiceId,
+}: {
+  quoteId: string;
+  amount: number;
+  paid: boolean;
+  invoiceId: string | null;
+}) {
+  const money = useMoney();
+  const [asking, setAsking] = useState(false);
+  const [pending, start] = useTransition();
+  if (paid)
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#E9F8EF] px-3.5 py-3 text-[13px] text-[#1E8A4C]">
+        <span className="flex items-center gap-2 font-semibold">
+          <Check size={16} /> Anticipo del {DEPOSIT_PCT}% recibido
+        </span>
+        {invoiceId && (
+          <Link href={`/admin/facturas/${invoiceId}`} className="font-semibold underline">
+            Ver factura
+          </Link>
+        )}
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl bg-accent-soft p-3.5">
+      <span className="text-[13px] text-accent-ink">
+        Antes de empezar a programar, cobra el <b>{DEPOSIT_PCT}%</b>: <b>{money(amount)}</b>.
+      </span>
+      <button type="button" onClick={() => setAsking(true)} className={buttonClass("primary", "h-11 w-full text-sm")}>
+        <HandCoins size={17} /> Registrar anticipo del {DEPOSIT_PCT}%
+      </button>
+      {asking && (
+        <Modal
+          title={`¿El cliente pagó el ${DEPOSIT_PCT}%?`}
+          onClose={() => setAsking(false)}
+          locked={pending}
+          icon={
+            <span className="grid size-12 place-items-center rounded-full bg-accent-soft text-accent-ink">
+              <HandCoins size={22} />
+            </span>
+          }
+        >
+          <p className="text-center text-sm leading-relaxed text-ink-2">
+            Se registra un abono de <b>{money(amount)}</b> en la factura de esta cotización (se crea si no existe) y queda
+            pendiente el resto.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setAsking(false)}
+              className={buttonClass("soft", "h-11 px-3 text-sm")}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              data-autofocus
+              disabled={pending}
+              onClick={() => start(() => registerDeposit(quoteId))}
+              className={buttonClass("primary", "h-11 px-3 text-sm whitespace-nowrap")}
+            >
+              {pending ? "Registrando…" : "Sí, registrar"}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
 }
 
 function Row({ label, value }: { label: string; value: string }) {

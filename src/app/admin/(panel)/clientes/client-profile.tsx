@@ -3,7 +3,7 @@ import Link from "next/link";
 import { cx, StatusBadge } from "@/components/ui";
 import { getInvoices, getQuotes } from "@/lib/data";
 import { formatDateShort, invoiceNumber, quoteNumber } from "@/lib/format";
-import { formatUSD } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 import { mailtoLink } from "@/lib/mail";
 import { prisma } from "@/lib/prisma";
 import { phoneError } from "@/lib/validation";
@@ -12,7 +12,11 @@ import type { ClientWithBalance } from "./client-data";
 
 /** Profile header, quick actions, totals, history and note. Used by the side panel and the client page. */
 export async function ClientProfile({ client: c, layout }: { client: ClientWithBalance; layout: "panel" | "page" }) {
-  const [quotes, invoices] = await Promise.all([getQuotes({ clientId: c.id }), getInvoices({ clientId: c.id })]);
+  const [quotes, invoices, { fmt }] = await Promise.all([
+    getQuotes({ clientId: c.id }),
+    getInvoices({ clientId: c.id }),
+    getAdminMoney(),
+  ]);
   const history = [
     ...invoices.map((i) => ({
       id: i.id,
@@ -104,9 +108,9 @@ export async function ClientProfile({ client: c, layout }: { client: ClientWithB
       )}
       <div className="grid grid-cols-3 gap-2">
         {[
-          ["Facturado", formatUSD(c.billed), ""],
-          ["Cobrado", formatUSD(c.paid), "text-[#1E8A4C]"],
-          ["Pendiente", formatUSD(c.pending), "text-accent-ink"],
+          ["Facturado", fmt(c.billed), ""],
+          ["Cobrado", fmt(c.paid), "text-[#1E8A4C]"],
+          ["Pendiente", fmt(c.pending), "text-accent-ink"],
         ].map(([l, v, tone]) => (
           <div
             key={l}
@@ -142,7 +146,7 @@ export async function ClientProfile({ client: c, layout }: { client: ClientWithB
                 <span className="truncate text-xs text-muted">{h.title}</span>
               </span>
             </span>
-            <span className="text-[13px] font-semibold tabular-nums">{formatUSD(h.total)}</span>
+            <span className="text-[13px] font-semibold tabular-nums">{fmt(h.total)}</span>
           </Link>
         ))}
       </div>

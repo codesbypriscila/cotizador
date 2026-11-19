@@ -4,20 +4,22 @@ import { DocCard, EmptyState, FilterChips, PageHeader, PageShell, SearchBox } fr
 import { buttonClass } from "@/components/ui";
 import { getQuotes, matches } from "@/lib/data";
 import { formatDate, formatRelative, quoteNumber } from "@/lib/format";
-import { formatUSD } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 
 const FILTERS = [
   { value: "todas", label: "Todas" },
+  { value: "pendiente", label: "Pendiente" },
   { value: "borrador", label: "Borrador" },
   { value: "enviada", label: "Enviada" },
   { value: "aceptada", label: "Aceptada" },
   { value: "rechazada", label: "Rechazada" },
   { value: "web", label: "Del cotizador" },
 ];
-const STATUS = { borrador: "DRAFT", enviada: "SENT", aceptada: "ACCEPTED", rechazada: "REJECTED" } as const;
+const STATUS = { pendiente: "PENDING", borrador: "DRAFT", enviada: "SENT", aceptada: "ACCEPTED", rechazada: "REJECTED" } as const;
 
 export default async function QuotesPage({ searchParams }: PageProps<"/admin/cotizaciones">) {
   const sp = await searchParams;
+  const { fmt } = await getAdminMoney();
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const estado = typeof sp.estado === "string" ? sp.estado : sp.origen === "web" ? "web" : "todas";
 
@@ -61,7 +63,7 @@ export default async function QuotesPage({ searchParams }: PageProps<"/admin/cot
               icon={x.source === "PUBLIC" && !x.seenAt ? Inbox : FileText}
               title={x.client.name}
               subtitle={x.title}
-              amount={formatUSD(x.total)}
+              amount={fmt(x.total)}
               number={quoteNumber(x.number)}
               status={x.status}
               date={x.source === "PUBLIC" && !x.seenAt ? formatRelative(x.createdAt) : formatDate(x.createdAt)}

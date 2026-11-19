@@ -5,7 +5,10 @@ import type { EditorCatalogItem, EditorClient, EditorLine } from "./doc-editor";
 
 export async function getEditorLists(): Promise<{ clients: EditorClient[]; catalog: EditorCatalogItem[]; rate: number }> {
   const [clients, catalog, rate] = await Promise.all([
-    prisma.client.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, contact: true, phone: true } }),
+    prisma.client.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, contact: true, phone: true, email: true },
+    }),
     prisma.catalogItem.findMany({
       orderBy: [{ kind: "asc" }, { sortOrder: "asc" }],
       select: { id: true, kind: true, name: true, description: true, icon: true, price: true, unit: true },

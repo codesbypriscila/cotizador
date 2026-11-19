@@ -20,37 +20,6 @@ export async function loginAsAdmin(context: BrowserContext) {
   ]);
 }
 
-/**
- * mailto: links open the computer's mail app. Tests record the links the page
- * really followed (clicks the app did not cancel) and stop the mail app from opening.
- */
-export async function captureMail(page: Page) {
-  await page.addInitScript(() => {
-    const w = window as unknown as { __mail: string[] };
-    w.__mail = [];
-    // Bubble phase on window: runs after React's own click handlers.
-    window.addEventListener("click", (e) => {
-      const a = (e.target as Element | null)?.closest?.('a[href^="mailto:"]') as HTMLAnchorElement | null;
-      if (!a) return;
-      if (!e.defaultPrevented) w.__mail.push(a.href);
-      e.preventDefault();
-    });
-  });
-}
-
-/** mailto: links followed so far, parsed. */
-export async function mailOpened(page: Page) {
-  const hrefs = await page.evaluate(() => (window as unknown as { __mail: string[] }).__mail);
-  return hrefs.map((href) => {
-    const url = new URL(href);
-    return {
-      to: decodeURIComponent(url.pathname),
-      subject: url.searchParams.get("subject") ?? "",
-      body: (url.searchParams.get("body") ?? "").replace(/\r\n/g, "\n"),
-    };
-  });
-}
-
 /** First href in the page matching a path prefix, e.g. "/admin/facturas/". */
 export async function firstLink(page: Page, prefix: string) {
   const hrefs = await page.locator(`a[href^="${prefix}"]`).evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));

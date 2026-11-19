@@ -1,4 +1,5 @@
 import { Calendar, Check, Clock3 } from "lucide-react";
+import { Money } from "@/components/money";
 import { cx, StatusBadge } from "@/components/ui";
 import type { InvoiceSummary } from "@/lib/data";
 import { formatDate, formatDateShort, invoiceNumber } from "@/lib/format";
@@ -47,7 +48,9 @@ export function InvoiceSummaryCard({ inv, compact }: { inv: InvoiceSummary; comp
       </div>
       <div className="flex flex-col gap-0.5">
         {!compact && <span className="text-[13px] text-muted">Total</span>}
-        <span className="text-[28px] font-bold tracking-[-0.035em] tabular-nums lg:text-[34px]">{formatUSD(inv.total)}</span>
+        <span className="text-[28px] font-bold tracking-[-0.035em] tabular-nums lg:text-[34px]">
+          <Money cents={inv.total} />
+        </span>
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-bg" role="progressbar" aria-valuenow={pct} aria-label="Pagado">
         <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
@@ -55,11 +58,15 @@ export function InvoiceSummaryCard({ inv, compact }: { inv: InvoiceSummary; comp
       <div className="flex gap-2.5">
         <div className="flex flex-1 flex-col gap-0.5 rounded-[14px] bg-bg px-3 py-2.5">
           <span className="text-xs text-muted">Pagado</span>
-          <span className="font-bold text-accent-ink tabular-nums">{formatUSD(inv.paid)}</span>
+          <span className="font-bold text-accent-ink tabular-nums">
+            <Money cents={inv.paid} />
+          </span>
         </div>
         <div className="flex flex-1 flex-col gap-0.5 rounded-[14px] bg-bg px-3 py-2.5">
           <span className="text-xs text-muted">Pendiente</span>
-          <span className="font-bold tabular-nums">{formatUSD(inv.pending)}</span>
+          <span className="font-bold tabular-nums">
+            <Money cents={inv.pending} />
+          </span>
         </div>
       </div>
       {inv.status !== "PAID" && (
@@ -88,7 +95,9 @@ export function PaymentRow({ amount, paidAt, method, note }: { amount: number; p
           {formatDateShort(paidAt)} · {method}
         </span>
       </span>
-      <span className="text-sm font-semibold tabular-nums">{formatUSD(amount)}</span>
+      <span className="text-sm font-semibold tabular-nums">
+        <Money cents={amount} />
+      </span>
     </div>
   );
 }
@@ -103,7 +112,9 @@ export function PendingRow({ amount }: { amount: number }) {
         <span className="text-sm font-semibold">Saldo pendiente</span>
         <span className="text-xs text-muted">Por cobrar</span>
       </span>
-      <span className="text-sm font-semibold text-muted tabular-nums">{formatUSD(amount)}</span>
+      <span className="text-sm font-semibold text-muted tabular-nums">
+        <Money cents={amount} />
+      </span>
     </div>
   );
 }

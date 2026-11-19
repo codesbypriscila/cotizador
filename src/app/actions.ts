@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { extraPrice } from "@/lib/catalog";
 import { prisma } from "@/lib/prisma";
 import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
 
@@ -46,8 +47,8 @@ export type ProposalInput = z.input<typeof schema>;
 
 /**
  * Saves a proposal from the public builder so it shows up in the admin as
- * "Propuestas nuevas". Prices are read again from the catalog; the client's
- * numbers are never trusted. The same checks run in the browser before the email opens.
+ * "Propuestas nuevas", with status Pendiente. Prices are read again from the
+ * catalog; the client's numbers are never trusted. The same checks run in the browser.
  */
 export async function submitProposal(input: ProposalInput): Promise<{ ok: boolean; error?: string }> {
   const parsed = schema.safeParse(input);
@@ -95,7 +96,7 @@ export async function submitProposal(input: ProposalInput): Promise<{ ok: boolea
     data: {
       clientId: client.id,
       title: countable ? `${project.name} · ${countable} ${countable === 1 ? "extra" : "extras"}` : project.name,
-      status: "SENT",
+      status: "PENDING",
       source: "PUBLIC",
       urgent: data.urgent,
       currency: data.currency,
@@ -109,7 +110,7 @@ export async function submitProposal(input: ProposalInput): Promise<{ ok: boolea
             description: e.item.description,
             icon: e.item.icon,
             quantity: e.quantity,
-            unitPrice: e.item.price,
+            unitPrice: extraPrice(e.item, project),
             unit: e.item.unit,
             sortOrder: i + 1,
           })),

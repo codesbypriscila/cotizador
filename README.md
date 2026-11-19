@@ -27,20 +27,21 @@ Tú lo conviertes en cotización, factura y abonos desde un panel privado.
 
 ### Para tus clientes: el cotizador público (`/`)
 
-- Eligen el tipo de proyecto (landing, página web, tienda online, app móvil, panel admin…) y marcan extras: páginas adicionales, reservas, pagos en línea, login, notificaciones por WhatsApp, dominio y mantenimiento.
+- Eligen el tipo de proyecto (landing, página web, tienda online, sistema de reservas, menú digital con QR, portafolio, chatbot de WhatsApp, sistema de inventario, app móvil…) y marcan extras: páginas adicionales, pagos con Azul/CardNet/PayPal, correos corporativos, SEO, multiidioma, blog, logo…
+- **Pagos mensuales**: el mantenimiento y el hosting administrado van siempre incluidos (cada proyecto tiene su propio precio de mantenimiento); el soporte prioritario es opcional.
 - **El total se suma en vivo**, en **US$ o RD$**. Los pesos son la conversión exacta de los dólares con la tasa del día.
 - Escogen el plazo (normal o urgente +20 %) y escriben su nombre, negocio, correo y WhatsApp. Todos son obligatorios y se validan: el nombre solo acepta letras.
-- Con **"Enviar cotización por correo"**, la propuesta se guarda en tu panel y se abre la app de correo del cliente (en iPhone, la hoja de "Nuevo mensaje") con la cotización ya escrita hacia tu correo. Luego tú le escribes por WhatsApp para decirle si fue aceptada.
+- Con **"Enviar cotización"** sale un aviso para confirmar. Al decir que sí, la cotización llega a tu panel en estado **Pendiente** y el cliente ve que fue enviada y será revisada. Luego tú le escribes por WhatsApp.
 - Va en 3 pasos (proyecto, extras, datos). En celular el total queda fijo abajo; en computadora los pasos van a la izquierda y la cotización a la derecha.
 
 ### Para ti: el panel de administración (`/admin`)
 
-- **Inicio**: lo cobrado en el mes, lo pendiente, lo vencido y las propuestas nuevas que llegan del cotizador.
-- **Cotizaciones**: editor con partidas del catálogo o libres, descuento, ITBIS 18 % y plazo urgente. Desde ahí puedes enviarlas por WhatsApp, duplicarlas o convertirlas en factura.
+- **Inicio**: lo cobrado en el mes, lo **por cobrar** (proyectos aceptados y facturas con saldo, con la fecha más próxima), lo vencido y las propuestas nuevas.
+- **Cotizaciones**: editor con partidas del catálogo o libres, descuento, ITBIS 18 %, plazo urgente, fecha de entrega y el WhatsApp y correo del cliente. Cuando la aceptan, **registras el anticipo del 30 %** antes de empezar y se crea la factura con ese abono.
 - **Facturas**: estados automáticos (borrador, enviada, parcial, pagada, vencida), abonos validados que nunca pasan de lo pendiente, recordatorios por WhatsApp con vista previa y descarga en PDF.
 - **Clientes**: ficha con historial y saldo. **WhatsApp** abre el chat del cliente y **Correo** abre tu app de correo con el saludo y tu firma ya escritos.
 - **Catálogo**: tus servicios y precios **en dólares**, con el rango de mercado de referencia, el orden y la visibilidad. Es lo que ve el cliente en el cotizador.
-- **Ajustes**: tu WhatsApp, la plantilla del correo de cotización, los datos de facturación y la tasa del dólar, que se actualiza sola cada 6 horas.
+- **Ajustes**: tu WhatsApp, los datos de facturación, la tasa del dólar (se actualiza sola cada 6 horas) y si quieres ver el panel **en US$ o en RD$**.
 
 ## Cómo está hecho
 

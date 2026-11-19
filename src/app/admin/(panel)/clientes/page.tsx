@@ -3,7 +3,7 @@ import Link from "next/link";
 import { EmptyState, FilterChips, PageHeader, PageShell, SearchBox } from "@/components/admin";
 import { buttonClass, cx } from "@/components/ui";
 import { matches } from "@/lib/data";
-import { formatUSD } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 import { ClientPanel } from "./client-panel";
 import { type ClientWithBalance, getClientsWithBalance } from "./client-data";
 
@@ -13,13 +13,14 @@ const FILTERS = [
   { value: "recientes", label: "Recientes" },
 ];
 
-function balanceText(c: ClientWithBalance) {
-  if (c.balanceLabel === "Debe") return `Debe ${formatUSD(c.pending)}`;
+function balanceText(c: ClientWithBalance, fmt: (cents: number) => string) {
+  if (c.balanceLabel === "Debe") return `Debe ${fmt(c.pending)}`;
   return c.balanceLabel;
 }
 
 export default async function ClientsPage({ searchParams }: PageProps<"/admin/clientes">) {
   const sp = await searchParams;
+  const { fmt } = await getAdminMoney();
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const filtro = typeof sp.filtro === "string" ? sp.filtro : "todos";
   const selectedId = typeof sp.id === "string" ? sp.id : undefined;
@@ -113,7 +114,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
                       <span className="hidden w-[120px] text-[13px] text-ink-2 lg:block">{c.phone || "—"}</span>
                       <span className="flex flex-col items-end gap-0.5 lg:contents">
                         <span className="text-[13px] font-semibold tabular-nums lg:w-[110px] lg:text-sm lg:text-right">
-                          {c.billed ? formatUSD(c.billed) : "—"}
+                          {c.billed ? fmt(c.billed) : "—"}
                         </span>
                         <span
                           className={cx(
@@ -122,7 +123,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/cl
                           )}
                           style={alert ? { color: c.balanceLabel === "Vencida" ? "#C53030" : "#2C6FD8" } : undefined}
                         >
-                          {balanceText(c)}
+                          {balanceText(c, fmt)}
                         </span>
                       </span>
                     </Link>

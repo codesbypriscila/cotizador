@@ -151,6 +151,35 @@ test.describe("flujo completo del admin", () => {
     await expect(page.getByText("Cliente Rápido").filter({ visible: true }).first()).toBeVisible();
   });
 
+  test("anticipo del 30 % antes de empezar: crea la factura con el abono", async ({ page }) => {
+    await page.goto("/admin/cotizaciones?estado=aceptada");
+    await page
+      .getByRole("link", { name: /Landing \+ WhatsApp/ })
+      .first()
+      .click();
+    await expect(page.getByText(/Antes de empezar a programar/)).toBeVisible();
+    // Delivery date agreed with the client
+    await expect(page.getByLabel("Fecha de entrega")).toBeVisible();
+    await page.getByRole("button", { name: "Registrar anticipo del 30%" }).click();
+    const dialog = page.getByRole("dialog", { name: "¿El cliente pagó el 30%?" });
+    await expect(dialog).toContainText("US$115.50"); // 30 % of US$385
+    await dialog.getByRole("button", { name: "Sí, registrar" }).click();
+    await expect(page).toHaveURL(/\/admin\/facturas\/c[a-z0-9]+$/);
+    await expect(page.getByText("Anticipo del 30%").first()).toBeVisible();
+    await expect(page.getByText("Parcial").filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByText("US$269.50").filter({ visible: true }).first()).toBeVisible(); // still owed
+    // The payment form also offers the 30 % button
+    await expect(page.getByRole("button", { name: "Anticipo 30%" })).toBeVisible();
+  });
+
+  test("inicio: Cobrado en blanco y Por cobrar con lo aceptado", async ({ page }) => {
+    await page.goto("/admin");
+    await expect(page.getByText(/^Cobrado en /)).toBeVisible();
+    const card = page.getByText(/^Cobrado en /).locator("xpath=ancestor::div[contains(@class,'card')][1]");
+    expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 255, 255)");
+    await expect(page.getByText(/proyectos? · vence el/).first()).toBeVisible();
+  });
+
   test("guardar sin partidas muestra un error claro", async ({ page }) => {
     await page.goto("/admin/cotizaciones/nueva");
     await page.getByLabel("Cliente", { exact: true }).selectOption({ index: 1 });
@@ -170,22 +199,22 @@ test.describe("flujo completo del admin", () => {
         .first(),
     ).toContainText("Obligatorio");
     const form = page.locator("aside form");
-    await form.locator('input[name="name"]').fill("SEO básico");
+    await form.locator('input[name="name"]').fill("Auditoría web");
     await form.locator('input[name="description"]').fill("Para salir en Google");
     await form.getByLabel("price", { exact: true }).fill("150");
     await form.getByRole("button", { name: "Guardar cambios" }).click();
     await expect(page).toHaveURL(/guardado=1/);
-    await expect(page.getByText("SEO básico").filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByText("Auditoría web").filter({ visible: true }).first()).toBeVisible();
 
     // Shows in the public builder, priced in dollars and pesos
     const pub = await page.request.get("/").then((r) => r.text());
-    expect(pub).toContain("SEO básico");
+    expect(pub).toContain("Auditoría web");
 
     // Move it up one place
     const before = await page
       .getByRole("button", { name: /^Subir / })
       .evaluateAll((b) => b.map((x) => x.getAttribute("aria-label")));
-    await page.getByRole("button", { name: "Subir SEO básico" }).click();
+    await page.getByRole("button", { name: "Subir Auditoría web" }).click();
     await expect
       .poll(async () =>
         page.getByRole("button", { name: /^Subir / }).evaluateAll((b) => b.map((x) => x.getAttribute("aria-label"))),
@@ -193,20 +222,20 @@ test.describe("flujo completo del admin", () => {
       .not.toEqual(before);
 
     // Hide it: gone from the public page
-    await page.getByRole("switch", { name: "Mostrar SEO básico en el cotizador" }).click();
-    await expect.poll(async () => (await page.request.get("/").then((r) => r.text())).includes("SEO básico")).toBe(false);
+    await page.getByRole("switch", { name: "Mostrar Auditoría web en el cotizador" }).click();
+    await expect.poll(async () => (await page.request.get("/").then((r) => r.text())).includes("Auditoría web")).toBe(false);
 
     // Delete it
     await page
-      .getByRole("link", { name: /SEO básico/ })
+      .getByRole("link", { name: /Auditoría web/ })
       .first()
       .click();
     await page.locator("aside").getByRole("button", { name: "Borrar del catálogo" }).click();
     await page.locator("aside").getByRole("button", { name: "Sí, borrar" }).click();
-    await expect(page.getByText("SEO básico")).toHaveCount(0);
+    await expect(page.getByText("Auditoría web")).toHaveCount(0);
   });
 
-  test("ajustes: guarda tu WhatsApp y el cotizador envía a tu correo", async ({ page }) => {
+  test("ajustes: guarda tu WhatsApp y el panel se ve en dólares o en pesos", async ({ page }) => {
     await page.goto("/admin/ajustes");
     await expect(page.getByText(/US\$1 = RD\$\d+\.\d{2}/)).toBeVisible();
     const field = page.locator('input[name="whatsapp"]');
@@ -215,12 +244,23 @@ test.describe("flujo completo del admin", () => {
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
     await expect(page.getByRole("button", { name: "Guardado" })).toBeVisible();
 
-    await page.goto("/");
-    await page.getByRole("button", { name: /Landing page/ }).click();
-    await expect(page.locator("aside").last().getByRole("link", { name: "Enviar cotización por correo" })).toHaveAttribute(
-      "href",
-      /^mailto:admin@prueba\.test\?subject=Cotizaci%C3%B3n%3A%20Landing%20page&body=/,
+    // Ver montos en RD$: lists switch to pesos, then back to dollars
+    await page.getByRole("group", { name: "Ver montos en" }).first().getByRole("button", { name: "RD$" }).click();
+    await expect(page.getByRole("group", { name: "Ver montos en" }).first().getByRole("button", { name: "RD$" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
+    await page.goto("/admin/cotizaciones");
+    await expect(page.getByText(/^RD\$[\d,]+$/).first()).toBeVisible();
+    await expect(page.getByText(/^US\$[\d,]+$/)).toHaveCount(0);
+    await page.goto("/admin/ajustes");
+    await page.getByRole("group", { name: "Ver montos en" }).first().getByRole("button", { name: "US$" }).click();
+    await expect(page.getByRole("group", { name: "Ver montos en" }).first().getByRole("button", { name: "US$" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.goto("/admin/cotizaciones");
+    await expect(page.getByText(/^US\$[\d,]+$/).first()).toBeVisible();
 
     await page.goto("/admin/ajustes");
     await page.locator('input[name="whatsapp"]').fill(original);

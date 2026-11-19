@@ -8,6 +8,7 @@ export function cx(...parts: (string | false | null | undefined)[]) {
 
 const BADGE: Record<DocStatus, string> = {
   DRAFT: "bg-[#F1F2F4] border-[#E2E4E8] text-[#5B6070]",
+  PENDING: "bg-[#FFF1E6] border-[#F8D3B0] text-[#B45309]",
   SENT: "bg-[#FFF8DD] border-[#F6E3A0] text-[#9A7400]",
   PARTIAL: "bg-[#EAF2FE] border-[#C9DDFB] text-[#2C6FD8]",
   PAID: "bg-[#E9F8EF] border-[#BDE7CD] text-[#1E8A4C]",

@@ -1,11 +1,12 @@
 import { CircleExclamationPoint, FileText, Hourglass, Inbox, Layers, Mail, Plus, Settings } from "lucide-react";
 import Link from "next/link";
 import { DocCard, EmptyState, PageShell, SectionTitle } from "@/components/admin";
+import { AdminCurrencySwitch, Money } from "@/components/money";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { Avatar, buttonClass, cx, StatusBadge } from "@/components/ui";
 import { getInvoices, getQuotes, getSettings } from "@/lib/data";
 import { formatDateLong, formatDateShort, formatRelative, invoiceNumber } from "@/lib/format";
-import { formatUSD } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 import { prisma } from "@/lib/prisma";
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
@@ -15,12 +16,14 @@ export default async function AdminHome() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [settings, invoices, proposals, openQuotes, payments] = await Promise.all([
+  const [settings, invoices, proposals, openQuotes, acceptedQuotes, payments, { fmt }] = await Promise.all([
     getSettings(),
     getInvoices(),
     getQuotes({ source: "PUBLIC", seenAt: null }),
-    getQuotes({ status: { in: ["DRAFT", "SENT"] } }),
+    getQuotes({ status: { in: ["DRAFT", "PENDING", "SENT"] } }),
+    getQuotes({ status: "ACCEPTED", invoice: { is: null } }),
     prisma.payment.findMany({ where: { paidAt: { gte: new Date(now.getTime() - 9 * WEEK) } } }),
+    getAdminMoney(),
   ]);
 
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -28,6 +31,16 @@ export default async function AdminHome() {
   const prevCollected = sum(payments.filter((p) => p.paidAt >= prevMonthStart && p.paidAt < monthStart).map((p) => p.amount));
   const change = prevCollected > 0 ? Math.round(((collected - prevCollected) / prevCollected) * 100) : null;
   const pendingInv = invoices.filter((i) => i.status === "SENT" || i.status === "PARTIAL");
+  // Por cobrar: accepted projects not invoiced yet + what is still owed on sent invoices,
+  // each with its delivery / due date.
+  const toCollect = [
+    ...acceptedQuotes.map((q) => ({ amount: q.total, due: q.deadline })),
+    ...pendingInv.map((i) => ({ amount: i.pending, due: i.dueAt as Date | null })),
+  ];
+  const nextDue = toCollect
+    .map((x) => x.due)
+    .filter((d): d is Date => Boolean(d) && d!.getTime() >= now.getTime() - 24 * 60 * 60 * 1000)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
   const overdueInv = invoices.filter((i) => i.status === "OVERDUE");
   const weeks = Array.from({ length: 6 }, (_, k) => {
     const end = now.getTime() - (5 - k) * WEEK;
@@ -39,14 +52,14 @@ export default async function AdminHome() {
   const metrics = [
     {
       label: "Por cobrar",
-      value: formatUSD(sum(pendingInv.map((i) => i.pending))),
-      detail: plural(pendingInv.length, "factura"),
+      value: fmt(sum(toCollect.map((x) => x.amount))),
+      detail: `${plural(toCollect.length, "proyecto")}${nextDue ? ` · vence el ${formatDateShort(nextDue)}` : ""}`,
       icon: Hourglass,
       tone: "bg-accent-soft text-accent-ink",
     },
     {
       label: "Vencido",
-      value: formatUSD(sum(overdueInv.map((i) => i.pending))),
+      value: fmt(sum(overdueInv.map((i) => i.pending))),
       detail: plural(overdueInv.length, "factura"),
       icon: CircleExclamationPoint,
       tone: "bg-[#FDEDED] text-[#C53030]",
@@ -54,7 +67,7 @@ export default async function AdminHome() {
     {
       label: "Cotizaciones abiertas",
       value: String(openQuotes.length),
-      detail: `${formatUSD(sum(openQuotes.map((q) => q.total)))} en total`,
+      detail: `${fmt(sum(openQuotes.map((q) => q.total)))} en total`,
       icon: FileText,
       tone: "bg-[#FFF8DD] text-[#9A7400]",
       desktopOnly: true,
@@ -76,7 +89,8 @@ export default async function AdminHome() {
         <Link href="/admin/cotizaciones/nueva" className={buttonClass("primary", "h-[46px] text-sm max-lg:hidden")}>
           <Plus size={18} /> Nueva cotización
         </Link>
-        <nav className="flex shrink-0 gap-1.5 lg:hidden" aria-label="Más secciones">
+        <nav className="flex shrink-0 items-center gap-1.5 lg:hidden" aria-label="Más secciones">
+          <AdminCurrencySwitch />
           <Link
             href="/admin/catalogo"
             aria-label="Catálogo"
@@ -94,12 +108,12 @@ export default async function AdminHome() {
         </nav>
       </header>
 
-      <section className="grid grid-cols-2 gap-2.5 lg:grid-cols-3 lg:gap-4 xl:grid-cols-[380px_1fr_1fr_1fr]">
-        <div className="flex flex-col gap-3 rounded-[22px] bg-ink p-4 text-white col-span-2 lg:gap-4 lg:p-[22px] lg:col-span-3 lg:rounded-3xl xl:col-span-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] text-nav-idle">Cobrado en {monthName}</span>
+      <section className="grid grid-cols-2 gap-2.5 lg:grid-cols-3 lg:gap-4 xl:grid-cols-[minmax(0,380px)_repeat(3,minmax(0,1fr))]">
+        <div className="card col-span-2 flex flex-col gap-3 rounded-[22px] p-4 lg:col-span-3 lg:gap-4 lg:rounded-3xl lg:p-[22px] xl:col-span-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[13px] text-muted">Cobrado en {monthName}</span>
             {change !== null && (
-              <span className="rounded-full bg-accent/20 px-2.5 py-1 text-xs font-semibold text-[#8DBBFF]">
+              <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
                 {change >= 0 ? "+" : ""}
                 {change}% vs. mes pasado
               </span>
@@ -107,14 +121,14 @@ export default async function AdminHome() {
           </div>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <span className="text-[28px] leading-none font-bold tracking-[-0.035em] tabular-nums lg:text-[34px]">
-              {formatUSD(collected)}
+              <Money cents={collected} />
             </span>
             <div className="flex h-10 items-end gap-1.5 lg:h-11 lg:gap-1.5" aria-label="Cobros de las últimas 6 semanas">
               {weeks.map((w, i) => (
                 <span
                   key={i}
-                  title={formatUSD(w)}
-                  className={cx("w-full rounded-lg lg:w-3 lg:rounded", i === 5 ? "bg-accent" : "bg-[#2A2D33]")}
+                  title={fmt(w)}
+                  className={cx("w-full rounded-lg lg:w-3 lg:rounded", i === 5 ? "bg-accent" : "bg-chip")}
                   style={{ height: `${Math.max(14, (w / maxWeek) * 100)}%` }}
                 />
               ))}
@@ -138,7 +152,7 @@ export default async function AdminHome() {
             <div className="flex flex-col gap-0.5 max-lg:order-3">
               <span className="text-xs text-muted lg:hidden">{m.label}</span>
               <span className="text-lg font-bold tracking-[-0.02em] tabular-nums lg:text-[28px]">{m.value}</span>
-              <span className="text-xs text-muted max-lg:hidden">{m.detail}</span>
+              <span className="text-[11px] text-muted lg:text-xs">{m.detail}</span>
             </div>
           </div>
         ))}
@@ -182,7 +196,7 @@ export default async function AdminHome() {
                     <StatusBadge status={inv.status} />
                   </td>
                   <td className="text-[13px] text-ink-2">{inv.status === "DRAFT" ? "—" : formatDateShort(inv.dueAt)}</td>
-                  <td className="text-right text-sm font-semibold tabular-nums">{formatUSD(inv.total)}</td>
+                  <td className="text-right text-sm font-semibold tabular-nums">{fmt(inv.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -218,7 +232,7 @@ export default async function AdminHome() {
                   icon={Inbox}
                   title={q.client.name}
                   subtitle={q.title}
-                  amount={formatUSD(q.total)}
+                  amount={fmt(q.total)}
                   number="Desde el cotizador"
                   numberIcon={Mail}
                   date={formatRelative(q.createdAt, now)}

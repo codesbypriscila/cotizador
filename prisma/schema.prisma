@@ -29,6 +29,7 @@ enum Currency {
 
 enum QuoteStatus {
   DRAFT
+  PENDING // sent by the client from the public page, waiting for review
   SENT
   ACCEPTED
   REJECTED
@@ -56,20 +57,21 @@ model Settings {
 }
 
 model CatalogItem {
-  id          String      @id @default(cuid())
-  kind        CatalogKind
-  name        String
-  description String      @default("")
-  icon        String // lucide icon name
-  price       Int // base price in USD cents, used by the public quote builder
-  minPrice    Int // market range in USD cents, reference only
-  maxPrice    Int
-  unit        PriceUnit   @default(ONCE)
-  visible     Boolean     @default(true)
-  required    Boolean     @default(false) // extra always included; the client cannot remove it
-  sortOrder   Int         @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id               String      @id @default(cuid())
+  kind             CatalogKind
+  name             String
+  description      String      @default("")
+  icon             String // lucide icon name
+  price            Int // base price in USD cents, used by the public quote builder
+  minPrice         Int // market range in USD cents, reference only
+  maxPrice         Int
+  unit             PriceUnit   @default(ONCE)
+  visible          Boolean     @default(true)
+  required         Boolean     @default(false) // extra always included; the client cannot remove it
+  maintenancePrice Int? // projects: monthly maintenance for this project type, in USD cents
+  sortOrder        Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   @@index([kind, sortOrder])
 }
@@ -100,6 +102,7 @@ model Quote {
   currency    Currency    @default(USD) // currency the client chose in the public builder
   notes       String      @default("")
   validUntil  DateTime?
+  deadline    DateTime? // delivery date agreed with the client
   seenAt      DateTime? // when the admin opened a public proposal
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt

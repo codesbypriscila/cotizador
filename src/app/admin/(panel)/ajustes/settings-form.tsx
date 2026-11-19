@@ -1,16 +1,15 @@
 "use client";
 
 import { Check, RefreshCw } from "lucide-react";
-import { useActionState, useRef } from "react";
+import { useActionState } from "react";
 import { Req } from "@/components/form";
-import { buttonClass, cx, inputClass } from "@/components/ui";
+import { AdminCurrencySwitch } from "@/components/money";
+import { buttonClass, inputClass } from "@/components/ui";
 import { formatRate } from "@/lib/money";
-import { DEFAULT_TEMPLATE, TEMPLATE_VARIABLES } from "@/lib/whatsapp";
 import { refreshRate, saveSettings } from "../../actions";
 
 type Values = {
   whatsapp: string;
-  messageTemplate: string;
   businessName: string;
   taxId: string;
   ownerName: string;
@@ -20,17 +19,6 @@ type Values = {
 
 export function SettingsForm({ values, rate }: { values: Values; rate: { rate: number; label: string } }) {
   const [state, action, pending] = useActionState(saveSettings, undefined);
-  const template = useRef<HTMLTextAreaElement>(null);
-
-  function insert(v: string) {
-    const el = template.current;
-    if (!el) return;
-    const { selectionStart: s, selectionEnd: e, value } = el;
-    el.value = value.slice(0, s) + v + value.slice(e);
-    el.focus();
-    el.setSelectionRange(s + v.length, s + v.length);
-  }
-
   const section = "card flex flex-col gap-3 p-[18px]";
   const label = "text-xs font-semibold text-ink-2";
 
@@ -111,41 +99,11 @@ export function SettingsForm({ values, rate }: { values: Values; rate: { rate: n
       </div>
 
       <section className={section}>
-        <h2 className="font-bold">
-          Plantilla del mensaje <Req />
-        </h2>
+        <h2 className="font-bold">Ver montos en</h2>
         <p className="text-[13px] text-muted">
-          Es el correo que le queda escrito al cliente cuando envía su cotización (llega a tu correo). Las líneas con datos vacíos
-          se quitan solas.
+          Elige si el panel te muestra los montos en dólares o en pesos. Los precios se siguen escribiendo en US$.
         </p>
-        <textarea
-          ref={template}
-          name="messageTemplate"
-          required
-          defaultValue={values.messageTemplate}
-          className={cx(inputClass, "h-auto min-h-[240px] resize-y py-3 text-[13px] leading-relaxed")}
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {TEMPLATE_VARIABLES.map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => insert(v)}
-              className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-ink"
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (template.current) template.current.value = DEFAULT_TEMPLATE;
-          }}
-          className="w-fit text-[13px] font-medium text-accent-ink"
-        >
-          Restaurar plantilla original
-        </button>
+        <AdminCurrencySwitch />
       </section>
 
       <div className="flex flex-col gap-2 lg:col-span-2 lg:flex-row lg:items-center">

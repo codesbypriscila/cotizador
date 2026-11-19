@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { captureMail, firstLink, loginAsAdmin, mailOpened } from "./helpers";
+import { firstLink, loginAsAdmin } from "./helpers";
 
 test.use({ viewport: { width: 1440, height: 1000 } });
 
 test.describe("cotizador: datos obligatorios", () => {
-  test("no se abre el correo si los datos están mal", async ({ page }) => {
-    await captureMail(page);
+  test("no se envía nada si los datos están mal", async ({ page }) => {
     const saves: string[] = [];
     page.on("request", (r) => r.method() === "POST" && saves.push(r.url()));
 
@@ -27,7 +26,7 @@ test.describe("cotizador: datos obligatorios", () => {
     const business = page.getByLabel("Negocio");
     const email = page.getByLabel("Correo");
     const phone = page.getByLabel("WhatsApp");
-    const send = page.locator("aside").last().getByRole("link", { name: "Enviar cotización por correo" });
+    const send = page.locator("aside").last().getByRole("button", { name: "Enviar cotización" });
 
     // Empty
     await send.click();
@@ -65,7 +64,7 @@ test.describe("cotizador: datos obligatorios", () => {
       await expect(page.locator("#cliente-telefono-error")).toBeVisible();
     }
 
-    expect(await mailOpened(page)).toEqual([]);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(saves).toEqual([]);
 
     // Valid data: accents, ñ and business signs are fine
@@ -73,12 +72,16 @@ test.describe("cotizador: datos obligatorios", () => {
     for (const id of ["nombre", "negocio", "correo", "telefono"])
       await expect(page.locator(`#cliente-${id}-error`)).toHaveCount(0);
     await send.click();
-    await expect(page.getByRole("heading", { name: "¿Ya enviaste el correo?" })).toBeVisible();
-    const [mail] = await mailOpened(page);
-    expect(mail.body).toContain("Soy José Ñúñez (H&M Moda, S.R.L.)");
-    expect(mail.body).toContain("Correo: laura@correo.com");
-    // Still nothing saved: only "Sí, ya lo envié" saves it
+    const confirm = page.getByRole("dialog", { name: "¿Enviar tu cotización?" });
+    await expect(confirm).toBeVisible();
+    // Still nothing saved: only "Sí, enviar" saves it
     expect(saves).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(confirm).toHaveCount(0);
+    await send.click();
+    await confirm.getByRole("button", { name: "Sí, enviar" }).click();
+    await expect(page.getByRole("dialog", { name: "¡Información enviada!" })).toBeVisible();
+    expect(saves).toHaveLength(1);
   });
 });
 

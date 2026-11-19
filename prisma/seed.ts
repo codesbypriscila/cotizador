@@ -18,24 +18,50 @@ const inDays = (n: number) => new Date(Date.now() + n * DAY);
 
 type Unit = "ONCE" | "EACH" | "MONTHLY";
 
-const projects: [string, string, string, number, number][] = [
-  ["Landing page", "Una sola página para campañas", "layout-template", 250, 500],
-  ["Página web", "Hasta 5 secciones, responsive", "monitor", 500, 1000],
-  ["Tienda online", "Catálogo, carrito y pedidos", "shopping-bag", 1000, 2500],
-  ["App móvil", "iOS y Android", "smartphone", 2000, 5000],
-  ["Panel admin", "Gestión interna del negocio", "layout-dashboard", 850, 2000],
-  ["Sistema a medida", "Se cotiza tras una llamada", "blocks", 1350, 4000],
+// [name, description, icon, price, market min, market max, monthly maintenance] in US$.
+// Prices for a freelancer starting out in the Dominican Republic.
+const projects: [string, string, string, number, number, number, number][] = [
+  ["Landing page", "Una sola página para tu campaña o negocio", "layout-template", 250, 200, 500, 25],
+  ["Página web", "Hasta 5 secciones, se ve bien en celular", "monitor", 500, 400, 1000, 35],
+  ["Tienda online", "Catálogo, carrito y pedidos", "shopping-bag", 900, 800, 2500, 60],
+  ["Sistema de reservas/citas", "Para salones, clínicas, barberías y consultorios", "calendar-check", 600, 500, 1500, 45],
+  ["Menú digital con QR", "Para restaurantes y cafeterías", "utensils", 120, 100, 300, 15],
+  ["Portafolio/CV web", "Para profesionales y freelancers", "palette", 180, 150, 400, 20],
+  ["Rediseño de sitio existente", "Tu web de siempre, moderna y rápida", "rocket", 300, 250, 800, 35],
+  [
+    "Automatizaciones/chatbot de WhatsApp",
+    "Respuestas automáticas, pedidos y recordatorios",
+    "message-circle",
+    350,
+    300,
+    900,
+    40,
+  ],
+  ["Sistema de inventario", "Productos, stock, entradas, salidas y alertas de stock bajo", "blocks", 800, 700, 2000, 60],
+  ["Sistema a la medida", "Inventario, facturación, punto de venta o CRM sencillo", "code", 1200, 1000, 4000, 80],
+  ["App móvil", "iOS y Android", "smartphone", 1500, 1200, 5000, 90],
+  ["Panel admin", "Gestión interna del negocio", "layout-dashboard", 700, 600, 2000, 50],
 ];
 
-const extras: [string, string, string, number, number, number, Unit][] = [
-  ["Páginas adicionales", "Cada página extra", "files", 50, 35, 85, "EACH"],
-  ["Panel de administración", "Para editar tu contenido", "layout-dashboard", 400, 400, 1000, "ONCE"],
-  ["Reservas y citas", "Formulario + calendario", "calendar-check", 250, 250, 600, "ONCE"],
-  ["Pagos en línea", "Tarjeta y transferencias", "credit-card", 250, 250, 650, "ONCE"],
-  ["Login de usuarios", "Cuentas para tus clientes", "lock-keyhole", 175, 175, 400, "ONCE"],
-  ["Notificaciones por WhatsApp", "Avisos automáticos", "bell-ring", 135, 135, 350, "ONCE"],
-  ["Dominio + hosting (1er año)", ".com + certificado SSL", "globe", 65, 65, 135, "ONCE"],
-  ["Mantenimiento mensual", "Cambios y soporte", "wrench", 50, 50, 170, "MONTHLY"],
+// [name, description, icon, price, market min, market max, unit, required] in US$.
+const extras: [string, string, string, number, number, number, Unit, boolean][] = [
+  ["Páginas adicionales", "Cada página extra", "files", 40, 30, 85, "EACH", false],
+  ["Panel de administración", "Para editar tu contenido", "layout-dashboard", 350, 300, 1000, "ONCE", false],
+  ["Reservas y citas", "Formulario + calendario", "calendar-check", 200, 200, 600, "ONCE", false],
+  ["Integración de pagos (Azul, CardNet, PayPal)", "Cobra con tarjeta en tu web", "credit-card", 220, 200, 650, "ONCE", false],
+  ["Login de usuarios", "Cuentas para tus clientes", "lock-keyhole", 150, 150, 400, "ONCE", false],
+  ["Notificaciones por WhatsApp", "Avisos automáticos", "bell-ring", 120, 100, 350, "ONCE", false],
+  ["Dominio y hosting del primer año", ".com + certificado SSL", "globe", 65, 60, 135, "ONCE", false],
+  ["Correos corporativos", "tunombre@empresa.com", "mail", 40, 30, 120, "ONCE", false],
+  ["SEO básico y Google Business Profile", "Para que te encuentren en Google y Maps", "search", 120, 100, 400, "ONCE", false],
+  ["Multiidioma (español/inglés)", "Tu web en dos idiomas", "globe", 150, 120, 450, "ONCE", false],
+  ["Blog autoadministrable", "Publica tus artículos tú misma", "files", 180, 150, 500, "ONCE", false],
+  ["Redacción de textos o fotos de producto", "Contenido listo para tu web", "camera", 100, 80, 350, "ONCE", false],
+  ["Logo o mini kit de marca", "Logo, colores y tipografías", "palette", 120, 100, 400, "ONCE", false],
+  // Recurring income: maintenance and hosting always go in.
+  ["Mantenimiento mensual", "Actualizaciones, respaldos y cambios pequeños", "wrench", 35, 25, 170, "MONTHLY", true],
+  ["Hosting administrado", "Servidor, SSL y respaldos, cobrado mensual", "rocket", 15, 10, 50, "MONTHLY", true],
+  ["Soporte prioritario", "Respuesta el mismo día", "bell-ring", 40, 30, 120, "MONTHLY", false],
 ];
 
 type Line = { name: string; description?: string; icon: string; quantity?: number; unitPrice: number; unit?: Unit };
@@ -102,18 +128,18 @@ async function main() {
   } else
     await prisma.catalogItem.createMany({
       data: [
-        ...projects.map(([name, description, icon, min, max], i) => ({
+        ...projects.map(([name, description, icon, price, min, max, maintenance], i) => ({
           kind: "PROJECT" as const,
           name,
           description,
           icon,
-          price: usd(min),
+          price: usd(price),
           minPrice: usd(min),
           maxPrice: usd(max),
-          visible: name !== "Sistema a medida",
+          maintenancePrice: usd(maintenance),
           sortOrder: i,
         })),
-        ...extras.map(([name, description, icon, price, min, max, unit], i) => ({
+        ...extras.map(([name, description, icon, price, min, max, unit, required], i) => ({
           kind: "EXTRA" as const,
           name,
           description,
@@ -122,7 +148,7 @@ async function main() {
           minPrice: usd(min),
           maxPrice: usd(max),
           unit,
-          required: name === "Mantenimiento mensual",
+          required,
           sortOrder: i,
         })),
       ],
@@ -215,7 +241,7 @@ async function main() {
     data: {
       clientId: cafe.id,
       title: "Página web · 4 extras",
-      status: "SENT",
+      status: "PENDING",
       source: "PUBLIC",
       notes: "Queremos que los clientes reserven mesa desde Instagram.",
       validUntil: inDays(15),
@@ -227,7 +253,7 @@ async function main() {
     data: {
       clientId: barber.id,
       title: "Landing page · 2 extras",
-      status: "SENT",
+      status: "PENDING",
       source: "PUBLIC",
       validUntil: inDays(15),
       createdAt: daysAgo(1),

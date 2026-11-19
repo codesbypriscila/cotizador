@@ -7,14 +7,14 @@ import { ProfilePhoto } from "@/components/profile-photo";
 import { buttonClass } from "@/components/ui";
 import { getInvoice, getSettings } from "@/lib/data";
 import { formatDate, invoiceNumber } from "@/lib/format";
-import { formatUSD } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 import { markInvoiceSent } from "../../../actions";
 import { InvoiceSummaryCard, PendingRow, reminderLink, reminderProblem, reminderText } from "../invoice-parts";
 import { DeleteInvoiceButton, PaymentForm, PaymentList, PrintButton } from "./invoice-client";
 
 export default async function InvoiceDetail({ params }: PageProps<"/admin/facturas/[id]">) {
   const { id } = await params;
-  const [inv, settings] = await Promise.all([getInvoice(id), getSettings()]);
+  const [inv, settings, { fmt }] = await Promise.all([getInvoice(id), getSettings(), getAdminMoney()]);
   if (!inv) notFound();
   const reminder = reminderLink(inv);
   const t = inv.totals;
@@ -63,18 +63,18 @@ export default async function InvoiceDetail({ params }: PageProps<"/admin/factur
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="text-sm font-semibold">{it.name}</span>
                     <span className="text-xs text-muted">
-                      {it.quantity} × {formatUSD(it.unitPrice)}
+                      {it.quantity} × {fmt(it.unitPrice)}
                       {it.unit === "MONTHLY" && "/mes"}
                     </span>
                   </span>
-                  <span className="text-sm font-semibold tabular-nums">{formatUSD(it.quantity * it.unitPrice)}</span>
+                  <span className="text-sm font-semibold tabular-nums">{fmt(it.quantity * it.unitPrice)}</span>
                 </div>
               ))}
             <div className="flex flex-col gap-2 border-t border-line py-3.5 text-sm">
-              <Row label="Subtotal" value={formatUSD(t.subtotal)} />
-              {t.discount > 0 && <Row label={`Descuento (${inv.discountPct}%)`} value={`−${formatUSD(t.discount)}`} />}
-              {t.tax > 0 && <Row label="ITBIS 18%" value={formatUSD(t.tax)} />}
-              <Row label="Total" value={formatUSD(t.total)} strong />
+              <Row label="Subtotal" value={fmt(t.subtotal)} />
+              {t.discount > 0 && <Row label={`Descuento (${inv.discountPct}%)`} value={`−${fmt(t.discount)}`} />}
+              {t.tax > 0 && <Row label="ITBIS 18%" value={fmt(t.tax)} />}
+              <Row label="Total" value={fmt(t.total)} strong />
             </div>
           </section>
           {inv.notes && (
@@ -96,7 +96,7 @@ export default async function InvoiceDetail({ params }: PageProps<"/admin/factur
             </div>
           </section>
 
-          {inv.pending > 0 && <PaymentForm invoiceId={inv.id} pending={inv.pending} />}
+          {inv.pending > 0 && <PaymentForm invoiceId={inv.id} pending={inv.pending} total={inv.total} />}
 
           <div className="flex flex-col gap-2.5">
             {!inv.sent && (

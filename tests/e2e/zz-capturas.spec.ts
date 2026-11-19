@@ -1,5 +1,4 @@
 import { test } from "@playwright/test";
-import { captureMail } from "./helpers";
 
 // Screenshots of the public quote builder on a phone, for the README. Only runs with CAPTURAS=1:
 //   CAPTURAS=1 npx playwright test zz-capturas
@@ -10,7 +9,6 @@ test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
 const out = (name: string) => `docs/screenshots/${name}.png`;
 
 test("cotizador en celular", async ({ page }) => {
-  await captureMail(page);
   await page.goto("/");
   // Hide the Next.js development badge so it does not cover the screenshots.
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });

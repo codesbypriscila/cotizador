@@ -4,7 +4,7 @@ import { DocCard, EmptyState, FilterChips, PageHeader, PageShell, SearchBox } fr
 import { Avatar, buttonClass, cx, StatusBadge } from "@/components/ui";
 import { getInvoices, matches } from "@/lib/data";
 import { formatDate, formatDateShort, invoiceNumber } from "@/lib/format";
-import { formatUSD } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 import type { InvoiceStatus } from "@/lib/totals";
 import { InvoicePanel } from "./invoice-panel";
 
@@ -26,6 +26,7 @@ const STATUS: Record<string, InvoiceStatus> = {
 
 export default async function InvoicesPage({ searchParams }: PageProps<"/admin/facturas">) {
   const sp = await searchParams;
+  const { fmt } = await getAdminMoney();
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const estado = typeof sp.estado === "string" && STATUS[sp.estado] ? sp.estado : "todas";
   const selectedId = typeof sp.id === "string" ? sp.id : undefined;
@@ -79,7 +80,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/admin/f
                 icon={ReceiptText}
                 title={i.client.name}
                 subtitle={i.title}
-                amount={formatUSD(i.total)}
+                amount={fmt(i.total)}
                 number={invoiceNumber(i.number)}
                 status={i.status}
                 date={formatDate(i.status === "DRAFT" ? i.issuedAt : i.dueAt)}
@@ -119,9 +120,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/admin/f
                           <StatusBadge status={i.status} />
                         </td>
                         <td className="text-[13px] text-ink-2">{i.status === "DRAFT" ? "—" : formatDateShort(i.dueAt)}</td>
-                        <td className="rounded-r-[14px] px-2.5 text-right text-sm font-semibold tabular-nums">
-                          {formatUSD(i.total)}
-                        </td>
+                        <td className="rounded-r-[14px] px-2.5 text-right text-sm font-semibold tabular-nums">{fmt(i.total)}</td>
                       </tr>
                     );
                   })}

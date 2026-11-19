@@ -19,6 +19,7 @@ export async function getClientsWithBalance() {
       mine.length === 0
         ? lastQuote
           ? {
+              PENDING: "Cotización pendiente",
               ACCEPTED: "Cotización aceptada",
               REJECTED: "Cotización rechazada",
               SENT: "Cotización enviada",

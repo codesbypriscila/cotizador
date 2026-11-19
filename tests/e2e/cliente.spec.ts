@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { captureMail, E2E_ADMIN, loginAsAdmin, mailOpened } from "./helpers";
+import { loginAsAdmin } from "./helpers";
 
 const money = (s: string) => Number(s.replace(/[^\d.]/g, ""));
 
@@ -15,8 +15,7 @@ async function rateShown(page: Page) {
 test.describe("cliente en computadora", () => {
   test.use({ viewport: { width: 1440, height: 1000 } });
 
-  test("va por pasos, ve el total en las dos monedas y envía la cotización por correo", async ({ page, context }) => {
-    await captureMail(page);
+  test("va por pasos, ve el total en las dos monedas y envía su cotización", async ({ page, context }) => {
     const saves: string[] = [];
     page.on("request", (r) => r.method() === "POST" && saves.push(r.url()));
     await page.goto("/");
@@ -33,8 +32,22 @@ test.describe("cliente en computadora", () => {
     const next = page.getByRole("button", { name: "Siguiente" });
     await expect(next).toBeDisabled();
 
-    // Step 1
-    await page.getByRole("button", { name: /Página web/ }).click();
+    // Step 1: cards show name, description and price (no icon); new project types are there
+    await page.getByRole("button", { name: /^US\$$/ }).click();
+    for (const name of [
+      "Menú digital con QR",
+      "Portafolio/CV web",
+      "Sistema de inventario",
+      "Automatizaciones/chatbot de WhatsApp",
+    ])
+      await expect(page.getByRole("button", { name: new RegExp(name.replace(/[/()]/g, "\\$&")) })).toBeVisible();
+    const app = page.getByRole("button", { name: /^App móvil/ });
+    await expect(app).toContainText("desde US$1,500");
+    await expect(app).toContainText("+ US$105/mes"); // maintenance 90 + hosting 15
+    await expect(app.locator("svg")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Landing page/ })).toContainText("+ US$40/mes"); // 25 + 15
+
+    await page.getByRole("button", { name: /^Página web/ }).click();
     await expect(steps.getByRole("button", { name: /Proyecto/ })).toContainText("Página web");
     await next.click();
 
@@ -44,40 +57,39 @@ test.describe("cliente en computadora", () => {
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();
     await page.getByRole("switch", { name: "Reservas y citas" }).click();
     await expect(steps.getByRole("button", { name: /Extras/ })).toContainText("2 extras");
+    await expect(page.getByRole("switch", { name: "Correos corporativos" })).toBeVisible();
 
-    // Monthly maintenance is required: already included and it cannot be switched off
-    await expect(page.getByRole("switch", { name: "Mantenimiento mensual" })).toHaveCount(0);
-    await expect(page.getByText("Incluido", { exact: true })).toBeVisible();
+    // Maintenance and hosting are required: already included and they cannot be switched off
+    await expect(page.getByRole("heading", { name: "Pagos mensuales" })).toBeVisible();
+    for (const name of ["Mantenimiento mensual", "Hosting administrado"])
+      await expect(page.getByRole("switch", { name })).toHaveCount(0);
+    await expect(page.getByText("Incluido", { exact: true })).toHaveCount(2);
+    await expect(page.getByRole("switch", { name: "Soporte prioritario" })).toBeVisible();
 
-    // US$: 500 + 2×50 + 250 = 850; maintenance goes apart
-    await page.getByRole("button", { name: /^US\$$/ }).click();
-    const totalUS = summary.getByText(/^US\$[\d,]+$/).last();
-    await expect(totalUS).toHaveText("US$850");
+    // US$: 500 + 2×40 + 200 = 780; monthly apart: Página web maintenance 35 + hosting 15
+    const totalUS = summary.locator("[data-total]");
+    await expect(totalUS).toHaveText("US$780");
     await expect(summary.getByText("US$50/mes")).toBeVisible();
 
     // RD$ must be exactly dollars × the rate shown
     await page.getByRole("button", { name: /^RD\$$/ }).click();
     const rate = await rateShown(page);
-    const totalRD = money(
-      await summary
-        .getByText(/^RD\$[\d,]+$/)
-        .last()
-        .innerText(),
-    );
-    expect(Math.abs(totalRD - 850 * rate)).toBeLessThanOrEqual(850 * 0.005 + 1);
+    await expect(totalUS).toHaveText(/^RD\$/);
+    const totalRD = money(await totalUS.innerText());
+    expect(Math.abs(totalRD - 780 * rate)).toBeLessThanOrEqual(780 * 0.005 + 1);
 
     // Step 3
     await next.click();
     await expect(page.getByRole("heading", { name: "Tus datos" })).toBeVisible();
     await page.getByRole("button", { name: "Urgente +20%" }).click();
     await page.getByRole("button", { name: /^US\$$/ }).click();
-    await expect(totalUS).toHaveText("US$1,020");
+    await expect(totalUS).toHaveText("US$936");
 
-    // Without the client's details it does not open the email
-    const send = summary.getByRole("link", { name: "Enviar cotización por correo" });
+    // Without the client's details nothing is sent
+    const send = summary.getByRole("button", { name: "Enviar cotización" });
     await send.click();
     await expect(summary.getByRole("alert")).toHaveText("Completa los campos marcados con *.");
-    expect(await mailOpened(page)).toEqual([]);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     await page.getByLabel("Tu nombre").fill("Cliente Prueba");
     await page.getByLabel("Negocio").fill("Negocio E2E");
@@ -86,38 +98,37 @@ test.describe("cliente en computadora", () => {
     await page.getByPlaceholder("Cuéntame algo de tu proyecto").fill("Quiero vender por Instagram.");
     await send.click();
 
-    // The mail app opens, but nothing reaches the admin until the client confirms
-    await expect(page.getByRole("heading", { name: "¿Ya enviaste el correo?" })).toBeVisible();
+    // First it asks; nothing is saved until "Sí, enviar"
+    const confirm = page.getByRole("dialog", { name: "¿Enviar tu cotización?" });
+    await expect(confirm).toContainText("pendiente");
     expect(saves).toEqual([]);
-    const [mail] = await mailOpened(page);
-    expect(mail.to).toBe(E2E_ADMIN.email); // the admin account's email
-    expect(mail.subject).toBe("Cotización: Página web — Negocio E2E");
-    expect(mail.body).toContain("Soy Cliente Prueba (Negocio E2E)");
-    expect(mail.body).toContain("Página web — US$500");
-    expect(mail.body).toContain("Páginas adicionales ×2 — US$100");
-    expect(mail.body).toContain("Plazo: Urgente (+20%)");
-    expect(mail.body).toContain("Total estimado: US$1,020");
-    expect(mail.body).toContain("Mantenimiento mensual: US$50/mes (aparte)");
-    expect(mail.body).toContain("Quiero vender por Instagram.");
-    expect(mail.body).toContain("Correo: cliente@prueba.test\nWhatsApp: 809 555 0199");
+    await confirm.getByRole("button", { name: "Cancelar" }).click();
+    await expect(confirm).toHaveCount(0);
+    expect(saves).toEqual([]);
 
-    await page.getByRole("button", { name: "Sí, ya lo envié" }).click();
-    await expect(page.getByRole("heading", { name: "¡Cotización enviada!" })).toBeVisible();
-    await expect(page.getByText("809 555 0199", { exact: true })).toBeVisible();
+    await send.click();
+    await confirm.getByRole("button", { name: "Sí, enviar" }).click();
+    const sent = page.getByRole("dialog", { name: "¡Información enviada!" });
+    await expect(sent).toContainText("será revisada en un momento");
+    await expect(sent).toContainText("809 555 0199");
 
-    // It arrives in the admin as a new proposal with the right total and the client's contact
+    // It arrives in the admin as a pending proposal with the right total and the client's contact
     await loginAsAdmin(context);
     await page.goto("/admin");
     const card = page.getByRole("link", { name: /Negocio E2E/ });
     await expect(card).toBeVisible();
-    await expect(card).toContainText("US$1,020"); // 850 + 20 % urgent (maintenance apart)
+    await expect(card).toContainText("US$936"); // 780 + 20 % urgent (monthly apart)
     await card.click();
     await expect(page.getByRole("textbox", { name: "Proyecto" })).toHaveValue("Página web · 2 extras");
+    await expect(page.getByRole("button", { name: "Pendiente", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("Plazo urgente (+20%)").first()).toBeVisible();
+    await expect(page.getByText("WhatsApp: 809 555 0199")).toBeVisible();
+    await expect(page.getByText("Correo: cliente@prueba.test")).toBeVisible();
+    await expect(page.getByRole("link", { name: "WhatsApp", exact: true })).toHaveAttribute("href", "https://wa.me/18095550199");
+    // The monthly lines use the Página web maintenance price
+    await expect(page.getByText("US$50/mes").first()).toBeVisible();
     await page.goto("/admin");
     await expect(page.getByRole("link", { name: /Negocio E2E/ })).toHaveCount(0);
-    await page.goto("/admin/clientes?q=Negocio%20E2E");
-    await expect(page.getByText("809 555 0199").first()).toBeAttached();
   });
 });
 
@@ -125,11 +136,10 @@ test.describe("cliente en celular", () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
 
   test("va por los 3 pasos con el total abajo", async ({ page }) => {
-    await captureMail(page);
     await page.goto("/");
     const next = page.getByRole("button", { name: "Siguiente" });
     await expect(next).toBeDisabled();
-    await page.getByRole("button", { name: /Landing page/ }).click();
+    await page.getByRole("button", { name: /^Landing page/ }).click();
     await expect(next).toBeEnabled();
     await page.getByRole("button", { name: /^US\$$/ }).click();
     await expect(page.getByText("US$250").last()).toBeVisible();
@@ -138,7 +148,7 @@ test.describe("cliente en celular", () => {
     await expect(page.getByRole("heading", { name: "Agrega extras" })).toBeVisible();
     await page.getByText("Notificaciones por WhatsApp").click(); // the whole row toggles
     await expect(page.getByRole("switch", { name: "Notificaciones por WhatsApp" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator(".fixed").getByText("US$385")).toBeVisible();
+    await expect(page.locator(".fixed").getByText("US$370")).toBeVisible();
 
     await page.getByRole("button", { name: "Atrás" }).click();
     await expect(page.getByRole("heading", { name: "¿Qué quieres crear?" })).toBeVisible();
@@ -146,7 +156,7 @@ test.describe("cliente en celular", () => {
     await page.getByRole("button", { name: "Siguiente" }).click();
 
     await expect(page.getByRole("heading", { name: "Tus datos" })).toBeVisible();
-    const send = page.getByRole("link", { name: "Enviar cotización por correo" }).filter({ visible: true });
+    const send = page.getByRole("button", { name: "Enviar cotización" }).filter({ visible: true });
     await send.click();
     await expect(page.getByText("Completa los campos marcados con *.").filter({ visible: true })).toBeVisible();
     await page.getByLabel("Tu nombre").fill("Cliente Celular");
@@ -154,16 +164,10 @@ test.describe("cliente en celular", () => {
     await page.getByLabel("Correo").fill("celular@prueba.test");
     await page.getByLabel("WhatsApp").fill("8295550100");
     await send.click();
-    await expect(page.getByRole("heading", { name: "¿Ya enviaste el correo?" })).toBeVisible();
-    expect(await mailOpened(page)).toHaveLength(1);
-
-    // "Volver y cambiar algo" keeps what was typed
-    await page.getByRole("button", { name: "Volver y cambiar algo" }).click();
-    await expect(page.getByLabel("Tu nombre")).toHaveValue("Cliente Celular");
-    await send.click();
-    await page.getByRole("button", { name: "Sí, ya lo envié" }).click();
-    await expect(page.getByRole("heading", { name: "¡Cotización enviada!" })).toBeVisible();
-    await page.getByRole("button", { name: "Hacer otra cotización" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Sí, enviar" }).click();
+    await expect(page.getByRole("dialog", { name: "¡Información enviada!" })).toBeVisible();
+    await page.getByRole("button", { name: "Listo" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Cotiza tu proyecto" })).toBeVisible();
   });
 });

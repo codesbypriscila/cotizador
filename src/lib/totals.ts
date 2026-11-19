@@ -2,6 +2,7 @@
 
 export const TAX_RATE = 0.18; // ITBIS
 export const URGENT_SURCHARGE = 0.2;
+export const DEPOSIT_PCT = 30; // paid before starting the work
 
 export type LineLike = {
   quantity: number;
@@ -38,7 +39,7 @@ export function computeTotals(
 }
 
 export type InvoiceStatus = "DRAFT" | "SENT" | "PARTIAL" | "PAID" | "OVERDUE";
-export type DocStatus = InvoiceStatus | "ACCEPTED" | "REJECTED";
+export type DocStatus = InvoiceStatus | "PENDING" | "ACCEPTED" | "REJECTED";
 
 /** Invoice status is derived: draft flag, payments and due date. */
 export function invoiceStatus(input: { sent: boolean; total: number; paid: number; dueAt: Date; now?: Date }): InvoiceStatus {
@@ -51,6 +52,7 @@ export function invoiceStatus(input: { sent: boolean; total: number; paid: numbe
 
 export const STATUS_LABEL: Record<DocStatus, string> = {
   DRAFT: "Borrador",
+  PENDING: "Pendiente",
   SENT: "Enviada",
   PARTIAL: "Parcial",
   PAID: "Pagada",

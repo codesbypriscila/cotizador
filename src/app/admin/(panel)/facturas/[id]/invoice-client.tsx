@@ -5,13 +5,16 @@ import { useActionState, useState, useTransition } from "react";
 import { ConfirmButton } from "@/components/confirm-button";
 import { FieldError, FieldLabel, invalid } from "@/components/form";
 import { buttonClass, cx, inputClass } from "@/components/ui";
+import { useMoney } from "@/components/money";
 import { formatUSD } from "@/lib/money";
+import { DEPOSIT_PCT } from "@/lib/totals";
 import { addPayment, deleteInvoice, deletePayment } from "../../../actions";
 import { PaymentRow } from "../invoice-parts";
 
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Santo_Domingo" });
 
-export function PaymentForm({ invoiceId, pending }: { invoiceId: string; pending: number }) {
+export function PaymentForm({ invoiceId, pending, total }: { invoiceId: string; pending: number; total: number }) {
+  const money = useMoney();
   const [state, action, isPending] = useActionState(addPayment.bind(null, invoiceId), undefined);
   // Controlled fields: a failed save keeps what was typed; a good one clears the amount.
   const [amount, setAmount] = useState("");
@@ -29,12 +32,14 @@ export function PaymentForm({ invoiceId, pending }: { invoiceId: string; pending
     (state && "fieldErrors" in state && state.fieldErrors) || {};
   const formError = state && "error" in state ? state.error : undefined;
   const pendingText = formatUSD(pending).replace("US$", "");
+  // 30 % deposit before starting the work (never more than what is still owed).
+  const depositText = formatUSD(Math.min(pending, Math.round((total * DEPOSIT_PCT) / 100))).replace("US$", "");
 
   return (
     <form id="abono" action={action} noValidate className="card flex scroll-mt-6 flex-col gap-3 p-[18px]">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[17px] font-bold">Registrar abono</h2>
-        <span className="text-xs text-muted">Pendiente: {formatUSD(pending)}</span>
+        <span className="text-xs text-muted">Pendiente: {money(pending)}</span>
       </div>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
@@ -54,9 +59,21 @@ export function PaymentForm({ invoiceId, pending }: { invoiceId: string; pending
             className={cx(inputClass, invalid(errors.amount))}
           />
           <FieldError id="abono-monto-error">{errors.amount}</FieldError>
-          <button type="button" onClick={() => setAmount(pendingText)} className="w-fit text-xs font-semibold text-accent-ink">
-            Pagó todo lo pendiente
-          </button>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            <button
+              type="button"
+              onClick={() => {
+                setAmount(depositText);
+                setNote(`Anticipo del ${DEPOSIT_PCT}%`);
+              }}
+              className="w-fit text-xs font-semibold text-accent-ink"
+            >
+              Anticipo {DEPOSIT_PCT}%
+            </button>
+            <button type="button" onClick={() => setAmount(pendingText)} className="w-fit text-xs font-semibold text-accent-ink">
+              Pagó todo lo pendiente
+            </button>
+          </div>
         </div>
         <div className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="abono-fecha" required>
@@ -130,6 +147,7 @@ export function PaymentList({
   payments: { id: string; amount: number; paidAt: Date; method: string; note: string }[];
 }) {
   const [pending, start] = useTransition();
+  const money = useMoney();
   if (payments.length === 0) return <p className="text-sm text-muted">Todavía no hay abonos.</p>;
   return payments.map((p) => (
     <div key={p.id} className="group flex items-center gap-2" style={{ opacity: pending ? 0.6 : 1 }}>
@@ -138,7 +156,7 @@ export function PaymentList({
       </div>
       <ConfirmButton
         ariaLabel="Borrar abono"
-        question={`¿Borrar ${formatUSD(p.amount)}?`}
+        question={`¿Borrar ${money(p.amount)}?`}
         onConfirm={() => start(() => deletePayment(p.id))}
         className="grid size-8 place-items-center rounded-full text-[#B5B9C0] hover:bg-bg hover:text-[#C53030]"
       >

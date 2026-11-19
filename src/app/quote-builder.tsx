@@ -1,15 +1,14 @@
 "use client";
 
-import { ArrowRight, Check, ChevronLeft, Copy, Info, Mail, Minus, Plus } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, Info, Minus, Plus, Send } from "lucide-react";
 import { useMemo, useState } from "react";
-import { CatalogIcon } from "@/components/icon";
+import { Modal } from "@/components/modal";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { buttonClass, Chip, cx, inputClass, Toggle } from "@/components/ui";
-import { mailtoLink } from "@/lib/mail";
+import { extraPrice } from "@/lib/catalog";
 import { type Currency, formatDOP, formatIn, formatRate, formatUSD } from "@/lib/money";
 import { computeTotals } from "@/lib/totals";
 import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
-import { fillTemplate } from "@/lib/whatsapp";
 import { submitProposal } from "./actions";
 
 export type BuilderItem = {
@@ -19,13 +18,12 @@ export type BuilderItem = {
   icon: string;
   price: number;
   unit: "ONCE" | "EACH" | "MONTHLY";
-  required: boolean; // always included, the client cannot remove it
+  required: boolean; // extras always included, the client cannot remove them
+  maintenancePrice: number | null; // projects: monthly maintenance for this project type
 };
 
 type Settings = {
-  email: string; // where the quotes arrive
   rate: number; // pesos per US$1, refreshed every 6 hours
-  template: string;
   ownerName: string;
   ownerRole: string;
   portfolioUrl: string;
@@ -33,7 +31,6 @@ type Settings = {
 
 type Step = 1 | 2 | 3;
 type FieldKey = "name" | "business" | "email" | "phone";
-type SentEmail = { to: string; subject: string; body: string; phone: string };
 
 const STEPS: { n: Step; title: string; short: string }[] = [
   { n: 1, title: "¿Qué quieres crear?", short: "Proyecto" },
@@ -58,10 +55,9 @@ export function QuoteBuilder({
   settings: Settings;
 }) {
   const [step, setStep] = useState<Step>(1);
-  const [sent, setSent] = useState<SentEmail | null>(null);
   const [currency, setCurrency] = useState<Currency>("DOP");
   const [projectId, setProjectId] = useState<string | null>(null);
-  // Required extras (like monthly maintenance) start included and cannot go below 1.
+  // Required extras (maintenance, hosting) start included and cannot go below 1.
   const requiredQty = () => Object.fromEntries(extras.filter((e) => e.required).map((e) => [e.id, 1]));
   const [qty, setQty] = useState<Record<string, number>>(requiredQty);
   const [name, setName] = useState("");
@@ -73,22 +69,32 @@ export function QuoteBuilder({
   const [website, setWebsite] = useState(""); // honeypot
   const [showErrors, setShowErrors] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [modal, setModal] = useState<"confirm" | "sent" | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const project = projects.find((p) => p.id === projectId) ?? null;
-  const chosenExtras = extras.filter((e) => (qty[e.id] ?? 0) > 0);
   const money = (n: number) => formatIn(currency, n, settings.rate);
+  const priceOf = (e: BuilderItem) => extraPrice(e, project);
+  const oneTimeExtras = extras.filter((e) => e.unit !== "MONTHLY");
+  const monthlyExtras = extras.filter((e) => e.unit === "MONTHLY");
+  const chosenExtras = extras.filter((e) => (qty[e.id] ?? 0) > 0);
 
   const totals = useMemo(
     () =>
       computeTotals(
         [
           ...(project ? [{ quantity: 1, unitPrice: project.price, unit: project.unit }] : []),
-          ...chosenExtras.map((e) => ({ quantity: qty[e.id], unitPrice: e.price, unit: e.unit })),
+          ...chosenExtras.map((e) => ({ quantity: qty[e.id], unitPrice: extraPrice(e, project), unit: e.unit })),
         ],
         { urgent },
       ),
     [project, chosenExtras, qty, urgent],
   );
+
+  /** What every project costs each month with the required services (maintenance + hosting). */
+  const requiredMonthly = (p: BuilderItem) =>
+    monthlyExtras.filter((e) => e.required).reduce((sum, e) => sum + extraPrice(e, p), 0);
 
   const countable = chosenExtras.filter((e) => e.unit !== "MONTHLY").length;
   const extrasLabel = countable ? `${countable} ${countable === 1 ? "extra" : "extras"}` : "";
@@ -104,32 +110,6 @@ export function QuoteBuilder({
   const fieldError = (k: FieldKey) => ((showErrors || touched[k]) && errors[k]) || null;
   const touch = (k: FieldKey) => () => setTouched((t) => ({ ...t, [k]: true }));
 
-  // The email the client sends: the quote, their contact details and what happens next.
-  const outgoing = useMemo(() => {
-    const monthly = chosenExtras.filter((e) => e.unit === "MONTHLY");
-    const extraLine = (e: BuilderItem) =>
-      e.unit === "EACH" ? `${e.name} ×${qty[e.id]} — ${money(e.price * qty[e.id])}` : `${e.name} — ${money(e.price)}`;
-    const quote = fillTemplate(settings.template, {
-      cliente: tidy(name) || "(tu nombre)",
-      negocio: tidy(business),
-      proyecto: project ? `${project.name} — ${money(project.price)}` : "",
-      extras: chosenExtras.filter((e) => e.unit !== "MONTHLY").map(extraLine),
-      plazo: urgent ? "Urgente (+20%)" : "Normal (3–4 semanas)",
-      total:
-        currency === "USD"
-          ? `${formatUSD(totals.total)} (≈ ${formatDOP(totals.total, settings.rate)})`
-          : `${formatDOP(totals.total, settings.rate)} (= ${formatUSD(totals.total)} · tasa ${formatRate(settings.rate)})`,
-      mensual: monthly.map((e) => `🔧 ${e.name}: ${money(e.price)}/mes (aparte)`).join("\n"),
-      nota: note,
-    });
-    const contact = [`Correo: ${email.trim()}`, `WhatsApp: ${phone.trim()}`].join("\n");
-    const subject = `Cotización: ${project?.name ?? "proyecto"}${tidy(business) ? ` — ${tidy(business)}` : ""}`;
-    return { to: settings.email, subject, body: `${quote}\n\nMis datos:\n${contact}` };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- money() only depends on currency and rate
-  }, [settings, name, business, email, phone, project, chosenExtras, qty, urgent, totals.total, currency, note]);
-
-  const mailto = mailtoLink(outgoing.to, outgoing);
-
   function go(next: Step) {
     setStep(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -140,15 +120,9 @@ export function QuoteBuilder({
     setQty((q) => ({ ...q, [id]: Math.max(min, Math.min(50, value)) }));
   }
 
-  /**
-   * The link itself opens the mail app (that is what makes the phone show its
-   * "New message" sheet). It is blocked until every required field is valid.
-   * Nothing is saved yet: the quote reaches the admin only when the client
-   * confirms they sent the email.
-   */
-  function onSend(e: React.MouseEvent<HTMLAnchorElement>) {
+  /** "Enviar cotización": checks the data, then asks before sending anything. */
+  function onSend() {
     if (!canSend || !project) {
-      e.preventDefault();
       setShowErrors(true);
       if (!project) go(1);
       else {
@@ -158,15 +132,18 @@ export function QuoteBuilder({
       }
       return;
     }
-    setSent({ ...outgoing, phone: phone.trim() });
-    window.scrollTo({ top: 0 });
+    setSendError(null);
+    setModal("confirm");
   }
 
-  /** "Sí, ya lo envié": saves the quote so it shows up in the admin. */
-  async function confirmSent(): Promise<{ ok: boolean; error?: string }> {
-    if (!project) return { ok: false };
+  /** "Sí, enviar": saves the quote as pending so it shows up in the admin. */
+  async function confirmSend() {
+    if (!project || sending) return;
+    setSending(true);
+    setSendError(null);
+    let res: { ok: boolean; error?: string };
     try {
-      return await submitProposal({
+      res = await submitProposal({
         projectId: project.id,
         extras: chosenExtras.map((x) => ({ id: x.id, quantity: qty[x.id] })),
         name: tidy(name),
@@ -179,17 +156,21 @@ export function QuoteBuilder({
         currency,
       });
     } catch {
-      return { ok: false, error: "No se pudo confirmar. Revisa tu conexión e inténtalo otra vez." };
+      res = { ok: false, error: "No se pudo enviar. Revisa tu conexión e inténtalo otra vez." };
     }
+    setSending(false);
+    if (res.ok) setModal("sent");
+    else setSendError(res.error ?? "No se pudo enviar. Inténtalo otra vez.");
   }
 
   function reset() {
-    setSent(null);
+    setModal(null);
     setProjectId(null);
     setQty(requiredQty());
     setNote("");
     setUrgent(false);
     setShowErrors(false);
+    setTouched({});
     go(1);
   }
 
@@ -202,25 +183,16 @@ export function QuoteBuilder({
       project={project}
       extras={chosenExtras}
       qty={qty}
+      priceOf={priceOf}
       totals={totals}
       urgent={urgent}
       currency={currency}
       rate={settings.rate}
-      mailto={mailto}
       canSend={canSend}
       onSend={onSend}
       formError={showErrors && !canSend ? (project ? "Completa los campos marcados con *." : "Elige un tipo de proyecto.") : null}
     />
   );
-
-  if (sent) {
-    return (
-      <div className="min-h-dvh w-full">
-        <Header settings={settings} currency={currency} onCurrency={setCurrency} />
-        <Sent email={sent} onConfirm={confirmSent} onBack={() => setSent(null)} onReset={reset} />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-dvh w-full">
@@ -287,6 +259,7 @@ export function QuoteBuilder({
               <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-2 lg:gap-3 xl:grid-cols-3">
                 {projects.map((p) => {
                   const selected = p.id === projectId;
+                  const monthly = requiredMonthly(p);
                   return (
                     <button
                       key={p.id}
@@ -294,21 +267,15 @@ export function QuoteBuilder({
                       aria-pressed={selected}
                       onClick={() => setProjectId(selected ? null : p.id)}
                       className={cx(
-                        "relative flex flex-col gap-2.5 rounded-[18px] border-2 bg-surface p-3.5 text-left shadow-card transition-colors",
+                        "relative flex flex-col gap-1 rounded-[18px] border-2 bg-surface p-3.5 pr-8 text-left shadow-card transition-colors",
                         selected ? "border-accent" : "border-transparent hover:border-accent/30",
                       )}
                     >
-                      <span
-                        className={cx(
-                          "grid size-9 place-items-center rounded-xl",
-                          selected ? "bg-accent-soft text-accent-ink" : "bg-bg text-ink",
-                        )}
-                      >
-                        <CatalogIcon name={p.icon} size={18} strokeWidth={1.8} />
-                      </span>
-                      <span className="flex flex-col gap-0.5">
-                        <span className="text-sm font-semibold">{p.name}</span>
-                        <span className="text-xs text-muted">desde {money(p.price)}</span>
+                      <span className="text-sm leading-snug font-bold [overflow-wrap:anywhere]">{p.name}</span>
+                      {p.description && <span className="text-xs leading-snug text-muted">{p.description}</span>}
+                      <span className="mt-auto flex flex-col pt-1.5">
+                        <span className="text-sm font-semibold">desde {money(p.price)}</span>
+                        {monthly > 0 && <span className="text-[11px] text-muted">+ {money(monthly)}/mes</span>}
                       </span>
                       {selected && (
                         <span className="absolute top-3 right-3 grid size-5 place-items-center rounded-full bg-accent text-white">
@@ -326,7 +293,6 @@ export function QuoteBuilder({
             <section className="flex flex-col gap-3">
               {project && (
                 <div className="flex w-fit max-w-full items-center gap-2 rounded-full bg-surface py-1.5 pr-1.5 pl-3 shadow-card lg:hidden">
-                  <CatalogIcon name={project.icon} size={16} className="text-accent-ink" />
                   <span className="min-w-0 text-[13px] font-semibold">
                     {project.name} · {money(project.price)}
                   </span>
@@ -339,56 +305,16 @@ export function QuoteBuilder({
                   </button>
                 </div>
               )}
-              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                {extras.map((e) => {
-                  const q = qty[e.id] ?? 0;
-                  const on = q > 0;
-                  const priceText =
-                    e.unit === "EACH"
-                      ? `${money(e.price)} c/u${on ? ` · ${money(e.price * q)}` : ""}`
-                      : e.unit === "MONTHLY"
-                        ? `${money(e.price)}/mes · aparte`
-                        : `+${money(e.price)}`;
-                  const body = (
-                    <>
-                      <span
-                        className={cx(
-                          "grid size-9 shrink-0 place-items-center rounded-xl",
-                          on ? "bg-accent-soft text-accent-ink" : "bg-bg text-ink-2",
-                        )}
-                      >
-                        <CatalogIcon name={e.icon} size={18} strokeWidth={1.8} />
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span className="text-sm font-semibold break-words hyphens-auto">{e.name}</span>
-                        <span className="text-xs text-muted">{priceText}</span>
-                      </span>
-                    </>
-                  );
-                  const rowClass = cx(
-                    "flex items-center gap-3 rounded-[18px] border-[1.5px] bg-surface p-3 text-left shadow-card transition-colors",
-                    on ? "border-accent" : "border-transparent",
-                  );
-                  return e.unit === "EACH" ? (
-                    <div key={e.id} className={rowClass}>
-                      {body}
-                      <Stepper value={q} min={e.required ? 1 : 0} label={e.name} onChange={(v) => setQuantity(e.id, v)} />
-                    </div>
-                  ) : e.required ? (
-                    <div key={e.id} className={rowClass}>
-                      {body}
-                      <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
-                        Incluido
-                      </span>
-                    </div>
-                  ) : (
-                    <div key={e.id} className={cx(rowClass, "cursor-pointer")} onClick={() => setQuantity(e.id, on ? 0 : 1)}>
-                      {body}
-                      <Toggle checked={on} label={e.name} />
-                    </div>
-                  );
-                })}
-              </div>
+              <ExtraList items={oneTimeExtras} qty={qty} priceOf={priceOf} money={money} onQuantity={setQuantity} />
+              {monthlyExtras.length > 0 && (
+                <>
+                  <div className="flex flex-col gap-0.5 pt-2">
+                    <h3 className="text-base font-bold tracking-[-0.01em]">Pagos mensuales</h3>
+                    <p className="text-xs text-muted">Mantienen tu proyecto funcionando. Se pagan aparte, cada mes.</p>
+                  </div>
+                  <ExtraList items={monthlyExtras} qty={qty} priceOf={priceOf} money={money} onQuantity={setQuantity} />
+                </>
+              )}
             </section>
           )}
 
@@ -531,6 +457,131 @@ export function QuoteBuilder({
           </div>
         </div>
       )}
+
+      {modal === "confirm" && (
+        <Modal
+          title="¿Enviar tu cotización?"
+          onClose={() => setModal(null)}
+          locked={sending}
+          icon={
+            <span className="grid size-12 place-items-center rounded-full bg-accent-soft text-accent-ink">
+              <Send size={22} />
+            </span>
+          }
+        >
+          <p className="text-center text-sm leading-relaxed text-ink-2">
+            Vas a enviar tu información (nombre, negocio, correo y WhatsApp) junto con la cotización de{" "}
+            <b>{money(totals.total)}</b>. Quedará en estado <b>pendiente</b> hasta que la revise.
+          </p>
+          {sendError && (
+            <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
+              {sendError}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setModal(null)}
+              disabled={sending}
+              className={buttonClass("soft", "h-11 px-3 text-sm")}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              data-autofocus
+              onClick={confirmSend}
+              disabled={sending}
+              aria-busy={sending}
+              className={buttonClass("primary", "h-11 px-3 text-sm whitespace-nowrap")}
+            >
+              {sending ? "Enviando…" : "Sí, enviar"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "sent" && (
+        <Modal
+          title="¡Información enviada!"
+          onClose={reset}
+          icon={
+            <span className="grid size-12 place-items-center rounded-full bg-accent text-white">
+              <Check size={24} strokeWidth={2.5} />
+            </span>
+          }
+        >
+          <p className="text-center text-sm leading-relaxed text-ink-2">
+            Tu cotización fue enviada y será revisada en un momento. Te escribo por WhatsApp al <b>{phone.trim()}</b>.
+          </p>
+          <button type="button" data-autofocus onClick={reset} className={buttonClass("primary", "h-11 w-full text-sm")}>
+            Listo
+          </button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ExtraList({
+  items,
+  qty,
+  priceOf,
+  money,
+  onQuantity,
+}: {
+  items: BuilderItem[];
+  qty: Record<string, number>;
+  priceOf: (e: BuilderItem) => number;
+  money: (cents: number) => string;
+  onQuantity: (id: string, value: number) => void;
+}) {
+  return (
+    <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+      {items.map((e) => {
+        const q = qty[e.id] ?? 0;
+        const on = q > 0;
+        const price = priceOf(e);
+        const priceText =
+          e.unit === "EACH"
+            ? `${money(price)} c/u${on ? ` · ${money(price * q)}` : ""}`
+            : e.unit === "MONTHLY"
+              ? `${money(price)}/mes`
+              : `+${money(price)}`;
+        const body = (
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-sm leading-snug font-bold break-words hyphens-auto">{e.name}</span>
+            {e.description && <span className="text-xs leading-snug text-muted">{e.description}</span>}
+            <span className="text-xs font-semibold text-ink-2">{priceText}</span>
+          </span>
+        );
+        const rowClass = cx(
+          "flex items-center gap-3 rounded-[18px] border-[1.5px] bg-surface p-3 text-left shadow-card transition-colors",
+          on ? "border-accent" : "border-transparent",
+        );
+        if (e.unit === "EACH")
+          return (
+            <div key={e.id} className={rowClass}>
+              {body}
+              <Stepper value={q} min={e.required ? 1 : 0} label={e.name} onChange={(v) => onQuantity(e.id, v)} />
+            </div>
+          );
+        if (e.required)
+          return (
+            <div key={e.id} className={rowClass}>
+              {body}
+              <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
+                Incluido
+              </span>
+            </div>
+          );
+        return (
+          <div key={e.id} className={cx(rowClass, "cursor-pointer")} onClick={() => onQuantity(e.id, on ? 0 : 1)}>
+            {body}
+            <Toggle checked={on} label={e.name} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -559,29 +610,35 @@ function Header({
             Ver mi portafolio
           </a>
         )}
-        <div className="flex rounded-full bg-chip p-[3px]" role="group" aria-label="Moneda">
-          {(
-            [
-              ["DOP", "RD$"],
-              ["USD", "US$"],
-            ] as const
-          ).map(([c, label]) => (
-            <button
-              key={c}
-              type="button"
-              aria-pressed={currency === c}
-              onClick={() => onCurrency(c)}
-              className={cx(
-                "rounded-full px-2.5 py-1 text-xs lg:px-3 lg:py-1.5 lg:text-[13px]",
-                currency === c ? "bg-surface font-semibold text-ink shadow-sm" : "font-medium text-muted",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <CurrencySwitch currency={currency} onCurrency={onCurrency} />
       </div>
     </header>
+  );
+}
+
+function CurrencySwitch({ currency, onCurrency }: { currency: Currency; onCurrency: (c: Currency) => void }) {
+  return (
+    <div className="flex rounded-full bg-chip p-[3px]" role="group" aria-label="Moneda">
+      {(
+        [
+          ["DOP", "RD$"],
+          ["USD", "US$"],
+        ] as const
+      ).map(([c, label]) => (
+        <button
+          key={c}
+          type="button"
+          aria-pressed={currency === c}
+          onClick={() => onCurrency(c)}
+          className={cx(
+            "rounded-full px-2.5 py-1 text-xs lg:px-3 lg:py-1.5 lg:text-[13px]",
+            currency === c ? "bg-surface font-semibold text-ink shadow-sm" : "font-medium text-muted",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -657,11 +714,11 @@ function Summary({
   project,
   extras,
   qty,
+  priceOf,
   totals,
   urgent,
   currency,
   rate,
-  mailto,
   canSend,
   onSend,
   formError,
@@ -669,55 +726,66 @@ function Summary({
   project: BuilderItem | null;
   extras: BuilderItem[];
   qty: Record<string, number>;
+  priceOf: (e: BuilderItem) => number;
   totals: ReturnType<typeof computeTotals>;
   urgent: boolean;
   currency: Currency;
   rate: number;
-  mailto: string;
   canSend: boolean;
-  onSend: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  onSend: () => void;
   formError: string | null;
 }) {
   const money = (n: number) => formatIn(currency, n, rate);
   const other = currency === "DOP" ? formatUSD(totals.total) : formatDOP(totals.total, rate);
   const monthly = extras.filter((e) => e.unit === "MONTHLY");
   return (
-    <div className="flex flex-col gap-3">
-      <div className="card flex flex-col gap-2.5 rounded-[20px] p-4 lg:gap-3 lg:p-5">
-        <h3 className="text-base font-bold tracking-[-0.01em]">Tu cotización</h3>
-        {!project && <p className="text-sm text-muted">Elige un tipo de proyecto para empezar.</p>}
-        {project && <Line label={project.name} value={money(project.price)} strong />}
-        {extras
-          .filter((e) => e.unit !== "MONTHLY")
-          .map((e) => (
-            <Line key={e.id} label={e.unit === "EACH" ? `${e.name} ×${qty[e.id]}` : e.name} value={money(e.price * qty[e.id])} />
-          ))}
-        {urgent && totals.urgentFee > 0 && <Line label="Plazo urgente (+20%)" value={money(totals.urgentFee)} />}
-        <hr className="border-line" />
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-muted">Total estimado</span>
-          <span className="text-2xl font-bold tracking-[-0.03em] tabular-nums lg:text-[32px]">{money(totals.total)}</span>
-          <span className="text-xs text-muted">
-            {currency === "DOP" ? "=" : "≈"} {other} · US$1 = RD${formatRate(rate)}
-          </span>
-        </div>
-        {monthly.map((e) => (
-          <Line key={e.id} label={`${e.name} (aparte)`} value={`${money(e.price)}/mes`} />
+    <div className="card flex flex-col gap-2.5 rounded-[20px] p-4 lg:gap-3 lg:p-5">
+      <h3 className="text-base font-bold tracking-[-0.01em]">Tu cotización</h3>
+      {!project && <p className="text-sm text-muted">Elige un tipo de proyecto para empezar.</p>}
+      {project && <Line label={project.name} value={money(project.price)} strong />}
+      {extras
+        .filter((e) => e.unit !== "MONTHLY")
+        .map((e) => (
+          <Line key={e.id} label={e.unit === "EACH" ? `${e.name} ×${qty[e.id]}` : e.name} value={money(priceOf(e) * qty[e.id])} />
         ))}
-        <a href={mailto} onClick={onSend} className={buttonClass("primary", cx("mt-1 w-full", !canSend && "opacity-60"))}>
-          <Mail size={18} /> Enviar cotización por correo
-        </a>
-        {formError ? (
-          <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
-            {formError}
-          </p>
-        ) : (
-          <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
-            <Info size={14} className="mt-px shrink-0" />
-            Se abre tu correo con todo escrito. Precio de referencia: te escribo por WhatsApp para confirmarte.
-          </p>
-        )}
+      {urgent && totals.urgentFee > 0 && <Line label="Plazo urgente (+20%)" value={money(totals.urgentFee)} />}
+      <hr className="border-line" />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs text-muted">Total estimado</span>
+        <span data-total className="text-2xl font-bold tracking-[-0.03em] tabular-nums lg:text-[32px]">
+          {money(totals.total)}
+        </span>
+        <span className="text-xs text-muted">
+          {currency === "DOP" ? "=" : "≈"} {other} · US$1 = RD${formatRate(rate)}
+        </span>
       </div>
+      {project && monthly.length > 0 && (
+        <div className="flex flex-col gap-1.5 rounded-xl bg-bg px-3 py-2.5">
+          <div className="flex justify-between gap-3 text-[13px] font-semibold">
+            <span>Pago mensual</span>
+            <span className="tabular-nums">{money(totals.monthly)}/mes</span>
+          </div>
+          {monthly.map((e) => (
+            <div key={e.id} className="flex justify-between gap-3 text-xs text-muted">
+              <span>{e.name}</span>
+              <span className="tabular-nums">{money(priceOf(e))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <button type="button" onClick={onSend} className={buttonClass("primary", cx("mt-1 w-full", !canSend && "opacity-60"))}>
+        <Send size={17} /> Enviar cotización
+      </button>
+      {formError ? (
+        <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
+          {formError}
+        </p>
+      ) : (
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
+          <Info size={14} className="mt-px shrink-0" />
+          Precio de referencia. La reviso y te escribo por WhatsApp para confirmarte.
+        </p>
+      )}
     </div>
   );
 }
@@ -728,134 +796,6 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
       <span className={strong ? "font-semibold" : "text-ink-2"}>{label}</span>
       <span className={cx("tabular-nums", strong ? "font-semibold" : "font-medium")}>{value}</span>
     </div>
-  );
-}
-
-/**
- * After the mail app opens: the page cannot know if the email was really sent,
- * so it asks. The quote only reaches the admin when the client confirms.
- */
-function Sent({
-  email,
-  onConfirm,
-  onBack,
-  onReset,
-}: {
-  email: SentEmail;
-  onConfirm: () => Promise<{ ok: boolean; error?: string }>;
-  onBack: () => void;
-  onReset: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const [state, setState] = useState<"ask" | "saving" | "done">("ask");
-  const [error, setError] = useState<string | null>(null);
-  const gmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email.to)}&su=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
-
-  async function confirm() {
-    if (state !== "ask") return;
-    setState("saving");
-    setError(null);
-    const res = await onConfirm();
-    if (res.ok) {
-      setState("done");
-      window.scrollTo({ top: 0 });
-    } else {
-      setState("ask");
-      setError(res.error ?? "No se pudo confirmar. Inténtalo otra vez.");
-    }
-  }
-
-  if (state === "done") {
-    return (
-      <main className="flex max-w-xl flex-col gap-5 px-4 pt-2 pb-10 md:px-8 xl:px-10">
-        <div className="flex items-center gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent text-white">
-            <Check size={22} strokeWidth={2.5} />
-          </span>
-          <h1 className="text-2xl font-bold tracking-[-0.03em]">¡Cotización enviada!</h1>
-        </div>
-        <p className="text-sm leading-relaxed text-ink-2">
-          Gracias. La reviso y te escribo por WhatsApp al <b>{email.phone}</b> para decirte si fue aceptada.
-        </p>
-        <button type="button" onClick={onReset} className={buttonClass("outline", "h-11 w-full text-sm")}>
-          Hacer otra cotización
-        </button>
-      </main>
-    );
-  }
-
-  return (
-    <main className="flex max-w-xl flex-col gap-5 px-4 pt-2 pb-10 md:px-8 xl:px-10">
-      <div className="flex items-center gap-3">
-        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-accent-soft text-accent-ink">
-          <Mail size={21} />
-        </span>
-        <h1 className="text-2xl font-bold tracking-[-0.03em]">¿Ya enviaste el correo?</h1>
-      </div>
-      <p className="text-sm leading-relaxed text-ink-2">
-        Se abrió tu app de correo con la cotización escrita. Toca <b>enviar</b> allí y después confirma aquí para que me llegue.
-      </p>
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={confirm}
-          disabled={state === "saving"}
-          aria-busy={state === "saving"}
-          className={buttonClass("primary", "w-full")}
-        >
-          <Check size={18} strokeWidth={2.5} /> {state === "saving" ? "Confirmando…" : "Sí, ya lo envié"}
-        </button>
-        {error && (
-          <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
-            {error}
-          </p>
-        )}
-      </div>
-
-      {/* The message, the way it looks in the mail app */}
-      <div className="card overflow-hidden rounded-[20px]">
-        <div className="flex flex-col divide-y divide-line border-b border-line px-4 text-[13px]">
-          <span className="py-2.5 text-muted">
-            Para: <span className="text-ink">{email.to}</span>
-          </span>
-          <span className="py-2.5 text-muted">
-            Asunto: <span className="text-ink">{email.subject}</span>
-          </span>
-        </div>
-        <p className="max-h-72 overflow-y-auto px-4 py-3.5 text-[13px] leading-relaxed whitespace-pre-line">{email.body}</p>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-xs font-semibold text-muted">¿No se abrió o lo cerraste sin enviar?</span>
-        <a href={mailtoLink(email.to, email)} className={buttonClass("soft", "h-11 w-full text-sm")}>
-          <Mail size={16} /> Abrir mi correo otra vez
-        </a>
-        <div className="grid grid-cols-2 gap-2">
-          <a
-            href={gmail}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonClass("soft", "h-11 gap-1.5 px-3 text-sm whitespace-nowrap")}
-          >
-            Abrir en Gmail
-          </a>
-          <button
-            type="button"
-            onClick={async () => {
-              await navigator.clipboard.writeText(email.body);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1600);
-            }}
-            className={buttonClass("soft", "h-11 gap-1.5 px-3 text-sm whitespace-nowrap")}
-          >
-            <Copy size={15} /> {copied ? "¡Copiado!" : "Copiar mensaje"}
-          </button>
-        </div>
-        <button type="button" onClick={onBack} className={buttonClass("outline", "h-11 w-full text-sm")}>
-          <ChevronLeft size={16} /> Volver y cambiar algo
-        </button>
-      </div>
-    </main>
   );
 }
 

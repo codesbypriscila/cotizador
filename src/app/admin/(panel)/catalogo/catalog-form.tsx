@@ -23,6 +23,7 @@ export type CatalogValues = {
   unit: Unit;
   visible: boolean;
   required: boolean;
+  maintenancePrice: number | null; // projects only
 };
 
 export function CatalogForm({
@@ -105,6 +106,12 @@ export function CatalogForm({
           <Money name="maxPrice" value={v.maxPrice} onChange={(n) => set("maxPrice", n)} />
         </Field>
       </div>
+      {!isExtra && (
+        <Field label="Mantenimiento al mes para este proyecto (US$)">
+          <Money name="maintenancePrice" value={v.maintenancePrice ?? 0} onChange={(n) => set("maintenancePrice", n || null)} />
+          <span className="text-xs text-muted">Si lo dejas vacío se usa el precio de «Mantenimiento mensual» de los extras.</span>
+        </Field>
+      )}
       {isExtra && (
         <Field label="Cómo se cobra">
           <input type="hidden" name="unit" value={v.unit} />
@@ -149,12 +156,10 @@ export function CatalogForm({
       <span className="text-xs font-semibold text-ink-2">Así lo ve el cliente</span>
       <div className="flex justify-center rounded-[18px] bg-bg p-4">
         {isExtra ? (
-          <div className="flex w-full items-center gap-3.5 rounded-[20px] border-[1.5px] border-accent bg-surface p-4 shadow-card">
-            <span className="grid size-11 place-items-center rounded-[14px] bg-accent-soft text-accent-ink">
-              <CatalogIcon name={v.icon} size={22} />
-            </span>
-            <span className="flex flex-1 flex-col">
-              <span className="text-[15px] font-semibold">{v.name || "Nombre"}</span>
+          <div className="flex w-full items-center gap-3.5 rounded-[18px] border-[1.5px] border-accent bg-surface p-3.5 shadow-card">
+            <span className="flex flex-1 flex-col gap-0.5">
+              <span className="text-sm font-bold">{v.name || "Nombre"}</span>
+              {v.description && <span className="text-xs text-muted">{v.description}</span>}
               <span className="text-[13px] text-muted">
                 {v.unit === "EACH"
                   ? `${formatUSD(v.price)} c/u`
@@ -172,16 +177,12 @@ export function CatalogForm({
             )}
           </div>
         ) : (
-          <div className="relative flex w-[200px] flex-col gap-3 rounded-[22px] border-2 border-accent bg-surface p-4 shadow-card">
-            <span className="grid size-11 place-items-center rounded-[14px] bg-accent-soft text-accent-ink">
-              <CatalogIcon name={v.icon} size={22} />
-            </span>
-            <span className="flex flex-col">
-              <span className="text-[15px] font-semibold">{v.name || "Nombre"}</span>
-              <span className="text-[13px] text-muted">desde {formatUSD(v.price)}</span>
-            </span>
-            <span className="absolute top-3.5 right-3.5 grid size-6 place-items-center rounded-full bg-accent text-white">
-              <Check size={14} strokeWidth={3} />
+          <div className="relative flex w-[220px] flex-col gap-1 rounded-[18px] border-2 border-accent bg-surface p-3.5 pr-9 shadow-card">
+            <span className="text-sm font-bold">{v.name || "Nombre"}</span>
+            {v.description && <span className="text-xs leading-snug text-muted">{v.description}</span>}
+            <span className="pt-1 text-sm font-semibold">desde {formatUSD(v.price)}</span>
+            <span className="absolute top-3 right-3 grid size-5 place-items-center rounded-full bg-accent text-white">
+              <Check size={12} strokeWidth={3} />
             </span>
           </div>
         )}

@@ -16,6 +16,7 @@ export default async function NewQuotePage({ searchParams }: PageProps<"/admin/c
         status: "DRAFT",
         urgent: false,
         validUntil: toDateInput(new Date(new Date().getTime() + 15 * 24 * 60 * 60 * 1000)),
+        deadline: null,
       }}
     />
   );

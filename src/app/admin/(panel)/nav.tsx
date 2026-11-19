@@ -4,6 +4,7 @@ import { Copy, FileText, House, Layers, Plus, ReceiptText, Settings, Users } fro
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { AdminCurrencySwitch } from "@/components/money";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { cx } from "@/components/ui";
 
@@ -67,7 +68,11 @@ export function Sidebar({ ownerName, publicUrl, newCount }: { ownerName: string;
           );
         })}
       </nav>
-      <div className="mt-auto hidden flex-col gap-2.5 rounded-[20px] bg-ink p-4 xl:flex">
+      <div className="mt-auto hidden flex-col gap-1.5 px-1.5 xl:flex">
+        <span className="text-xs font-medium text-muted">Ver montos en</span>
+        <AdminCurrencySwitch />
+      </div>
+      <div className="hidden flex-col gap-2.5 rounded-[20px] bg-ink p-4 xl:flex">
         <span className="text-sm font-semibold text-white">Tu cotizador público</span>
         <a href="/" target="_blank" className="truncate text-xs text-[#8DBBFF] hover:underline">
           {publicUrl.replace(/^https?:\/\//, "")}

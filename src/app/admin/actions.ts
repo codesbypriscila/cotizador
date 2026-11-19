@@ -5,12 +5,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import type { Prisma } from "@/generated/prisma/client";
+import { ADMIN_CURRENCY_COOKIE } from "@/lib/admin-money";
 import { getServerEnv } from "@/lib/env";
 import { verifyPassword } from "@/lib/password";
 import { parseUSD } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { getRate } from "@/lib/rate";
-import { computeTotals } from "@/lib/totals";
+import { computeTotals, DEPOSIT_PCT } from "@/lib/totals";
 import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
 import { createSessionToken, SESSION_COOKIE, SESSION_DAYS } from "@/lib/session";
 
@@ -104,9 +106,10 @@ const docBase = z.object({
 });
 
 const quoteSchema = docBase.extend({
-  status: z.enum(["DRAFT", "SENT", "ACCEPTED", "REJECTED"]),
+  status: z.enum(["DRAFT", "PENDING", "SENT", "ACCEPTED", "REJECTED"]),
   urgent: z.boolean(),
   validUntil: z.string().nullable(), // yyyy-mm-dd
+  deadline: z.string().nullable(), // yyyy-mm-dd, delivery date agreed with the client
 });
 
 const invoiceSchema = docBase.extend({
@@ -153,6 +156,7 @@ export async function saveQuote(id: string | null, input: QuoteInput): Promise<R
     urgent: d.urgent,
     notes: d.notes,
     validUntil: d.validUntil ? day(d.validUntil) : null,
+    deadline: d.deadline ? day(d.deadline) : null,
   };
   const saved = id
     ? await prisma.quote.update({
@@ -164,7 +168,7 @@ export async function saveQuote(id: string | null, input: QuoteInput): Promise<R
   return { ok: true, id: saved.id };
 }
 
-export async function setQuoteStatus(id: string, status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED") {
+export async function setQuoteStatus(id: string, status: "DRAFT" | "PENDING" | "SENT" | "ACCEPTED" | "REJECTED") {
   await requireAdmin();
   await prisma.quote.update({ where: { id }, data: { status } });
   revalidatePath("/admin", "layout");
@@ -210,11 +214,10 @@ export async function duplicateQuote(id: string) {
   redirect(`/admin/cotizaciones/${copy.id}`);
 }
 
-/** Copies the quote into a new draft invoice (due in 30 days) and marks the quote accepted. */
-export async function convertQuoteToInvoice(quoteId: string) {
-  await requireAdmin();
-  const q = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId }, include: { items: true, invoice: true } });
-  if (q.invoice) redirect(`/admin/facturas/${q.invoice.id}`);
+type QuoteWithItems = Prisma.QuoteGetPayload<{ include: { items: true } }>;
+
+/** New invoice with the quote's one-time items (urgent surcharge included); due on the delivery date or in 30 days. */
+async function createInvoiceFromQuote(q: QuoteWithItems, opts: { sent?: boolean } = {}) {
   const urgentNote = q.urgent ? "Incluye plazo urgente (+20%)." : "";
   const items = q.items
     .filter((i) => i.unit !== "MONTHLY")
@@ -228,21 +231,72 @@ export async function convertQuoteToInvoice(quoteId: string) {
       unit,
       sortOrder,
     }));
-  const inv = await prisma.invoice.create({
+  return prisma.invoice.create({
     data: {
       clientId: q.clientId,
       quoteId: q.id,
       title: q.title,
+      sent: opts.sent ?? false,
       discountPct: q.discountPct,
       applyTax: q.applyTax,
       notes: [q.notes, urgentNote].filter(Boolean).join("\n"),
-      dueAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      dueAt: q.deadline ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       items: { create: items },
     },
+    include: { items: true },
   });
+}
+
+/** Copies the quote into a new draft invoice and marks the quote accepted. */
+export async function convertQuoteToInvoice(quoteId: string) {
+  await requireAdmin();
+  const q = await prisma.quote.findUniqueOrThrow({ where: { id: quoteId }, include: { items: true, invoice: true } });
+  if (q.invoice) redirect(`/admin/facturas/${q.invoice.id}`);
+  const inv = await createInvoiceFromQuote(q);
   await prisma.quote.update({ where: { id: q.id }, data: { status: "ACCEPTED" } });
   revalidatePath("/admin", "layout");
   redirect(`/admin/facturas/${inv.id}`);
+}
+
+/**
+ * The client paid the 30 % deposit to start the work: the quote becomes an
+ * invoice (if it was not one yet) with that first payment recorded.
+ */
+export async function registerDeposit(quoteId: string) {
+  await requireAdmin();
+  const q = await prisma.quote.findUniqueOrThrow({
+    where: { id: quoteId },
+    include: { items: true, invoice: { include: { items: true, payments: true } } },
+  });
+  if (q.invoice && q.invoice.payments.length > 0) redirect(`/admin/facturas/${q.invoice.id}`);
+  const inv = q.invoice ?? (await createInvoiceFromQuote(q, { sent: true }));
+  const total = computeTotals(inv.items, { discountPct: inv.discountPct, applyTax: inv.applyTax }).total;
+  await prisma.payment.create({
+    data: {
+      invoiceId: inv.id,
+      amount: Math.round((total * DEPOSIT_PCT) / 100),
+      paidAt: day(today()),
+      method: "Transferencia",
+      note: `Anticipo del ${DEPOSIT_PCT}%`,
+    },
+  });
+  await prisma.invoice.update({ where: { id: inv.id }, data: { sent: true } });
+  await prisma.quote.update({ where: { id: q.id }, data: { status: "ACCEPTED" } });
+  revalidatePath("/admin", "layout");
+  redirect(`/admin/facturas/${inv.id}`);
+}
+
+/** US$ or RD$ for every amount in the admin. */
+export async function setAdminCurrency(currency: "USD" | "DOP") {
+  await requireAdmin();
+  (await cookies()).set(ADMIN_CURRENCY_COOKIE, currency === "DOP" ? "DOP" : "USD", {
+    path: "/admin",
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  });
+  revalidatePath("/admin", "layout");
 }
 
 export async function saveInvoice(id: string | null, input: InvoiceInput): Promise<Result> {
@@ -381,6 +435,7 @@ const catalogSchema = z.object({
   unit: unit,
   visible: z.boolean(),
   required: z.boolean(),
+  maintenancePrice: z.number().int().min(0).max(100_000_000).nullable(),
 });
 
 const digits = (v: FormDataEntryValue | null) => String(v ?? "").replace(/[^\d]/g, "");
@@ -398,13 +453,14 @@ export async function saveCatalogItem(id: string | null, _prev: unknown, form: F
     unit: form.get("unit") ?? "ONCE",
     visible: form.get("visible") === "on",
     required: form.get("required") === "on",
+    maintenancePrice: digits(form.get("maintenancePrice")) ? Number(digits(form.get("maintenancePrice"))) : null,
   });
   if (!parsed.success) return { error: "Escribe el nombre y el precio base." };
   const d = parsed.data;
   if (d.kind === "PROJECT") {
     d.unit = "ONCE";
     d.required = false;
-  }
+  } else d.maintenancePrice = null;
   if (id) {
     await prisma.catalogItem.update({ where: { id }, data: d });
   } else {
@@ -455,7 +511,6 @@ const settingsSchema = z.object({
       if (error) ctx.addIssue({ code: "custom", message: error });
     })
     .transform((v) => v.replace(/\D/g, "")),
-  messageTemplate: z.string().trim().min(10).max(2000),
   businessName: z.string().trim().min(1).max(80),
   taxId: z.string().trim().max(30),
   ownerName: z.string().trim().min(1).max(60),
@@ -465,14 +520,13 @@ const settingsSchema = z.object({
 
 export async function saveSettings(_prev: unknown, form: FormData) {
   await requireAdmin();
-  const keys = ["whatsapp", "messageTemplate", "businessName", "taxId", "ownerName", "ownerRole", "portfolioUrl"];
+  const keys = ["whatsapp", "businessName", "taxId", "ownerName", "ownerRole", "portfolioUrl"];
   const parsed = settingsSchema.safeParse(Object.fromEntries(keys.map((k) => [k, form.get(k) ?? ""])));
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path[0];
     const msg: Record<string, string> = {
       whatsapp: "WhatsApp: " + (parsed.error.issues.find((i) => i.path[0] === "whatsapp")?.message ?? "número no válido."),
       portfolioUrl: "El enlace del portafolio debe empezar con https://",
-      messageTemplate: "La plantilla es muy corta.",
     };
     return { error: msg[String(field)] ?? "Revisa los datos." };
   }

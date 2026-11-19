@@ -4,12 +4,13 @@ import { PageHeader, PageShell } from "@/components/admin";
 import { CatalogIcon } from "@/components/icon";
 import { buttonClass, cx } from "@/components/ui";
 import { getRate } from "@/lib/rate";
-import { formatUSD, formatUSDShort } from "@/lib/money";
+import { getAdminMoney } from "@/lib/admin-money";
 import { prisma } from "@/lib/prisma";
 import { CatalogForm, type CatalogValues, MoveButtons, VisibleToggle } from "./catalog-form";
 
 export default async function CatalogPage({ searchParams }: PageProps<"/admin/catalogo">) {
   const sp = await searchParams;
+  const { fmt } = await getAdminMoney();
   const tab = sp.tipo === "extras" ? "extras" : "proyectos";
   const kind = tab === "extras" ? "EXTRA" : "PROJECT";
   const editingId = typeof sp.id === "string" ? sp.id : undefined;
@@ -38,6 +39,7 @@ export default async function CatalogPage({ searchParams }: PageProps<"/admin/ca
           unit: "ONCE",
           visible: true,
           required: false,
+          maintenancePrice: null,
         }
       : null;
 
@@ -136,14 +138,14 @@ export default async function CatalogPage({ searchParams }: PageProps<"/admin/ca
                       {!it.visible && <span className="font-semibold text-[#C53030]">Oculto · </span>}
                       {it.required && <span className="font-semibold text-accent-ink">Obligatorio · </span>}
                       <span className="2xl:hidden">
-                        Mercado {formatUSDShort(it.minPrice)} – {formatUSDShort(it.maxPrice).replace("US$", "")}
+                        Mercado {fmt(it.minPrice)} – {fmt(it.maxPrice)}
                       </span>
                       <span className="max-2xl:hidden">{it.description}</span>
                     </span>
                   </span>
                 </Link>
                 <span className="hidden w-[150px] shrink-0 text-[13px] text-ink-2 2xl:block">
-                  {formatUSDShort(it.minPrice)} – {formatUSDShort(it.maxPrice).replace("US$", "")}
+                  {fmt(it.minPrice)} – {fmt(it.maxPrice)}
                 </span>
                 <div className="flex flex-1 flex-wrap items-center justify-between gap-2 sm:ml-[50px] sm:gap-3 lg:ml-0 lg:flex-none lg:flex-nowrap lg:gap-4">
                   <span className="flex lg:w-[130px]">
@@ -152,7 +154,7 @@ export default async function CatalogPage({ searchParams }: PageProps<"/admin/ca
                       scroll={false}
                       className="flex shrink-0 items-center gap-1.5 rounded-full bg-bg px-2.5 py-1.5 text-[13px] font-semibold whitespace-nowrap tabular-nums"
                     >
-                      {formatUSD(it.price)}
+                      {fmt(it.price)}
                       {it.unit === "MONTHLY" && <span className="font-normal text-muted">/mes</span>}
                       {it.unit === "EACH" && <span className="font-normal text-muted">c/u</span>}
                       <PencilLine size={12} className="text-muted" />
