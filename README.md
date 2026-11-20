@@ -94,7 +94,7 @@ Las pruebas de punta a punta nunca usan Neon: levantan su propia base con `prism
 
 ## Precios de ejemplo
 
-El catálogo inicial trae rangos de referencia del mercado freelance en República Dominicana: Landing desde US$250, Página web desde US$500, Tienda online desde US$1,000, App móvil desde US$2,000. Todos se editan en **Admin → Catálogo**.
+El catálogo inicial trae precios de freelancer que empieza en República Dominicana: Landing desde US$190, Página web desde US$375, Tienda online desde US$675, App móvil desde US$1,125, con mantenimiento desde US$11 al mes. Todos se editan en **Admin → Catálogo**.
 
 ---
 

@@ -49,13 +49,13 @@ test.describe("flujo completo del admin", () => {
     await page.getByLabel("Precio en US$").last().fill("120.50");
     await page.getByLabel("Descuento en porcentaje").fill("10");
     await page.getByRole("switch", { name: "Aplicar ITBIS" }).click();
-    // (500 + 120.50) − 10 % = 558.45; ITBIS 18 % = 100.52 → 658.97
-    await expect(page.getByText("US$658.97").filter({ visible: true }).first()).toBeVisible();
+    // (375 + 120.50) − 10 % = 445.95; ITBIS 18 % = 80.27 → 526.22
+    await expect(page.getByText("US$526.22").filter({ visible: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "Guardar" }).click();
     await expect(page).toHaveURL(/\/admin\/cotizaciones\/c[a-z0-9]+$/);
     const quoteUrl = page.url();
     await expect(page.getByRole("heading", { name: /COT-\d{4}/ })).toBeVisible();
-    await expect(page.getByText("US$658.97").filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByText("US$526.22").filter({ visible: true }).first()).toBeVisible();
 
     // Status and WhatsApp link to the client
     await page.getByRole("button", { name: "Enviada", exact: true }).click();
@@ -77,7 +77,7 @@ test.describe("flujo completo del admin", () => {
     await page.getByRole("button", { name: "Convertir en factura" }).click();
     await expect(page).toHaveURL(/\/admin\/facturas\/c[a-z0-9]+$/);
     const invoiceUrl = page.url();
-    await expect(page.getByText("US$658.97").filter({ visible: true }).first()).toBeVisible();
+    await expect(page.getByText("US$526.22").filter({ visible: true }).first()).toBeVisible();
     await expect(page.getByText("Borrador").filter({ visible: true }).first()).toBeVisible();
 
     await page.getByRole("button", { name: "Marcar como enviada" }).click();
@@ -88,8 +88,8 @@ test.describe("flujo completo del admin", () => {
     await page.getByLabel("Concepto", { exact: true }).fill("Anticipo");
     await page.getByRole("button", { name: "Registrar abono" }).click();
     await expect(page.getByText("Parcial").filter({ visible: true }).first()).toBeVisible();
-    await expect(page.getByText("US$358.97").filter({ visible: true }).first()).toBeVisible(); // pending
-    await page.getByLabel("Monto (US$)").fill("358.97");
+    await expect(page.getByText("US$226.22").filter({ visible: true }).first()).toBeVisible(); // pending
+    await page.getByLabel("Monto (US$)").fill("226.22");
     await page.getByRole("button", { name: "Registrar abono" }).click();
     await expect(page.getByText("Pagada").filter({ visible: true }).first()).toBeVisible();
 

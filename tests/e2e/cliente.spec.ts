@@ -42,10 +42,10 @@ test.describe("cliente en computadora", () => {
     ])
       await expect(page.getByRole("button", { name: new RegExp(name.replace(/[/()]/g, "\\$&")) })).toBeVisible();
     const app = page.getByRole("button", { name: /^App móvil/ });
-    await expect(app).toContainText("desde US$1,500");
-    await expect(app).toContainText("+ US$105/mes"); // maintenance 90 + hosting 15
+    await expect(app).toContainText("desde US$1,125");
+    await expect(app).toContainText("+ US$81/mes"); // maintenance 70 + hosting 11
     await expect(app.locator("svg")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^Landing page/ })).toContainText("+ US$40/mes"); // 25 + 15
+    await expect(page.getByRole("button", { name: /^Landing page/ })).toContainText("+ US$30/mes"); // 19 + 11
 
     await page.getByRole("button", { name: /^Página web/ }).click();
     await expect(steps.getByRole("button", { name: /Proyecto/ })).toContainText("Página web");
@@ -66,24 +66,24 @@ test.describe("cliente en computadora", () => {
     await expect(page.getByText("Incluido", { exact: true })).toHaveCount(2);
     await expect(page.getByRole("switch", { name: "Soporte prioritario" })).toBeVisible();
 
-    // US$: 500 + 2×40 + 200 = 780; monthly apart: Página web maintenance 35 + hosting 15
+    // US$: 375 + 2×30 + 150 = 585; monthly apart: Página web maintenance 25 + hosting 11
     const totalUS = summary.locator("[data-total]");
-    await expect(totalUS).toHaveText("US$780");
-    await expect(summary.getByText("US$50/mes")).toBeVisible();
+    await expect(totalUS).toHaveText("US$585");
+    await expect(summary.getByText("US$36/mes")).toBeVisible();
 
     // RD$ must be exactly dollars × the rate shown
     await page.getByRole("button", { name: /^RD\$$/ }).click();
     const rate = await rateShown(page);
     await expect(totalUS).toHaveText(/^RD\$/);
     const totalRD = money(await totalUS.innerText());
-    expect(Math.abs(totalRD - 780 * rate)).toBeLessThanOrEqual(780 * 0.005 + 1);
+    expect(Math.abs(totalRD - 585 * rate)).toBeLessThanOrEqual(585 * 0.005 + 1);
 
     // Step 3
     await next.click();
     await expect(page.getByRole("heading", { name: "Tus datos" })).toBeVisible();
     await page.getByRole("button", { name: "Urgente +20%" }).click();
     await page.getByRole("button", { name: /^US\$$/ }).click();
-    await expect(totalUS).toHaveText("US$936");
+    await expect(totalUS).toHaveText("US$702");
 
     // Without the client's details nothing is sent
     const send = summary.getByRole("button", { name: "Enviar cotización" });
@@ -117,7 +117,7 @@ test.describe("cliente en computadora", () => {
     await page.goto("/admin");
     const card = page.getByRole("link", { name: /Negocio E2E/ });
     await expect(card).toBeVisible();
-    await expect(card).toContainText("US$936"); // 780 + 20 % urgent (monthly apart)
+    await expect(card).toContainText("US$702"); // 585 + 20 % urgent (monthly apart)
     await card.click();
     await expect(page.getByRole("textbox", { name: "Proyecto" })).toHaveValue("Página web · 2 extras");
     await expect(page.getByRole("button", { name: "Pendiente", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -126,7 +126,7 @@ test.describe("cliente en computadora", () => {
     await expect(page.getByText("Correo: cliente@prueba.test")).toBeVisible();
     await expect(page.getByRole("link", { name: "WhatsApp", exact: true })).toHaveAttribute("href", "https://wa.me/18095550199");
     // The monthly lines use the Página web maintenance price
-    await expect(page.getByText("US$50/mes").first()).toBeVisible();
+    await expect(page.getByText("US$36/mes").first()).toBeVisible();
     await page.goto("/admin");
     await expect(page.getByRole("link", { name: /Negocio E2E/ })).toHaveCount(0);
   });
@@ -142,13 +142,13 @@ test.describe("cliente en celular", () => {
     await page.getByRole("button", { name: /^Landing page/ }).click();
     await expect(next).toBeEnabled();
     await page.getByRole("button", { name: /^US\$$/ }).click();
-    await expect(page.getByText("US$250").last()).toBeVisible();
+    await expect(page.getByText("US$190").last()).toBeVisible();
     await next.click();
 
     await expect(page.getByRole("heading", { name: "Agrega extras" })).toBeVisible();
     await page.getByText("Notificaciones por WhatsApp").click(); // the whole row toggles
     await expect(page.getByRole("switch", { name: "Notificaciones por WhatsApp" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator(".fixed").getByText("US$370")).toBeVisible();
+    await expect(page.locator(".fixed").getByText("US$280")).toBeVisible();
 
     await page.getByRole("button", { name: "Atrás" }).click();
     await expect(page.getByRole("heading", { name: "¿Qué quieres crear?" })).toBeVisible();
