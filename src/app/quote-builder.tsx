@@ -1,29 +1,25 @@
 "use client";
 
 import { ArrowRight, Check, ChevronLeft, Info, Minus, Plus, Send } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Modal } from "@/components/modal";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { buttonClass, Chip, cx, inputClass, Toggle } from "@/components/ui";
-import { extraPrice } from "@/lib/catalog";
-import { type Currency, formatDOP, formatIn, formatRate, formatUSD } from "@/lib/money";
-import { computeTotals } from "@/lib/totals";
 import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
 import { submitProposal } from "./actions";
+
+// The public builder never shows (or even receives) prices: the client picks what they
+// need and the quote reaches the admin with its estimate, computed on the server.
 
 export type BuilderItem = {
   id: string;
   name: string;
   description: string;
-  icon: string;
-  price: number;
   unit: "ONCE" | "EACH" | "MONTHLY";
   required: boolean; // extras always included, the client cannot remove them
-  maintenancePrice: number | null; // projects: monthly maintenance for this project type
 };
 
 type Settings = {
-  rate: number; // pesos per US$1, refreshed every 6 hours
   ownerName: string;
   ownerRole: string;
   portfolioUrl: string;
@@ -55,7 +51,6 @@ export function QuoteBuilder({
   settings: Settings;
 }) {
   const [step, setStep] = useState<Step>(1);
-  const [currency, setCurrency] = useState<Currency>("DOP");
   const [projectId, setProjectId] = useState<string | null>(null);
   // Required extras (maintenance, hosting) start included and cannot go below 1.
   const requiredQty = () => Object.fromEntries(extras.filter((e) => e.required).map((e) => [e.id, 1]));
@@ -74,27 +69,9 @@ export function QuoteBuilder({
   const [sendError, setSendError] = useState<string | null>(null);
 
   const project = projects.find((p) => p.id === projectId) ?? null;
-  const money = (n: number) => formatIn(currency, n, settings.rate);
-  const priceOf = (e: BuilderItem) => extraPrice(e, project);
   const oneTimeExtras = extras.filter((e) => e.unit !== "MONTHLY");
   const monthlyExtras = extras.filter((e) => e.unit === "MONTHLY");
   const chosenExtras = extras.filter((e) => (qty[e.id] ?? 0) > 0);
-
-  const totals = useMemo(
-    () =>
-      computeTotals(
-        [
-          ...(project ? [{ quantity: 1, unitPrice: project.price, unit: project.unit }] : []),
-          ...chosenExtras.map((e) => ({ quantity: qty[e.id], unitPrice: extraPrice(e, project), unit: e.unit })),
-        ],
-        { urgent },
-      ),
-    [project, chosenExtras, qty, urgent],
-  );
-
-  /** What every project costs each month with the required services (maintenance + hosting). */
-  const requiredMonthly = (p: BuilderItem) =>
-    monthlyExtras.filter((e) => e.required).reduce((sum, e) => sum + extraPrice(e, p), 0);
 
   const countable = chosenExtras.filter((e) => e.unit !== "MONTHLY").length;
   const extrasLabel = countable ? `${countable} ${countable === 1 ? "extra" : "extras"}` : "";
@@ -153,7 +130,7 @@ export function QuoteBuilder({
         urgent,
         note,
         website,
-        currency,
+        currency: "USD",
       });
     } catch {
       res = { ok: false, error: "No se pudo enviar. Revisa tu conexión e inténtalo otra vez." };
@@ -183,11 +160,7 @@ export function QuoteBuilder({
       project={project}
       extras={chosenExtras}
       qty={qty}
-      priceOf={priceOf}
-      totals={totals}
       urgent={urgent}
-      currency={currency}
-      rate={settings.rate}
       canSend={canSend}
       onSend={onSend}
       formError={showErrors && !canSend ? (project ? "Completa los campos marcados con *." : "Elige un tipo de proyecto.") : null}
@@ -196,14 +169,14 @@ export function QuoteBuilder({
 
   return (
     <div className="min-h-dvh w-full">
-      <Header settings={settings} currency={currency} onCurrency={setCurrency} />
+      <Header settings={settings} />
 
       <main className="px-4 pb-32 md:px-8 lg:grid lg:grid-cols-[210px_minmax(0,1fr)_320px] lg:items-start lg:gap-8 lg:pb-12 xl:grid-cols-[240px_minmax(0,1fr)_360px] xl:gap-10 xl:px-10">
         {/* Left: title and the three steps (computer) */}
         <aside className="hidden flex-col gap-6 lg:sticky lg:top-6 lg:flex">
           <div className="flex flex-col gap-2">
             <h1 className="text-[28px] leading-tight font-bold tracking-[-0.035em]">Cotiza tu proyecto</h1>
-            <p className="text-sm leading-relaxed text-muted">Elige lo que necesitas y mira el precio al instante.</p>
+            <p className="text-sm leading-relaxed text-muted">Elige lo que necesitas y te envío tu cotización.</p>
           </div>
           <nav aria-label="Pasos" className="flex flex-col gap-1">
             {STEPS.map((s) => {
@@ -244,7 +217,7 @@ export function QuoteBuilder({
           {step === 1 && (
             <section className="flex flex-col gap-1.5 lg:hidden">
               <h1 className="text-[26px] leading-tight font-bold tracking-[-0.035em]">Cotiza tu proyecto</h1>
-              <p className="text-sm leading-relaxed text-muted">Elige lo que necesitas y mira el precio al instante.</p>
+              <p className="text-sm leading-relaxed text-muted">Elige lo que necesitas y te envío tu cotización.</p>
             </section>
           )}
 
@@ -259,7 +232,6 @@ export function QuoteBuilder({
               <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-2 lg:gap-3 xl:grid-cols-3">
                 {projects.map((p) => {
                   const selected = p.id === projectId;
-                  const monthly = requiredMonthly(p);
                   return (
                     <button
                       key={p.id}
@@ -273,10 +245,6 @@ export function QuoteBuilder({
                     >
                       <span className="text-sm leading-snug font-bold [overflow-wrap:anywhere]">{p.name}</span>
                       {p.description && <span className="text-xs leading-snug text-muted">{p.description}</span>}
-                      <span className="mt-auto flex flex-col pt-1.5">
-                        <span className="text-sm font-semibold">desde {money(p.price)}</span>
-                        {monthly > 0 && <span className="text-[11px] text-muted">+ {money(monthly)}/mes</span>}
-                      </span>
                       {selected && (
                         <span className="absolute top-3 right-3 grid size-5 place-items-center rounded-full bg-accent text-white">
                           <Check size={12} strokeWidth={3} />
@@ -293,9 +261,7 @@ export function QuoteBuilder({
             <section className="flex flex-col gap-3">
               {project && (
                 <div className="flex w-fit max-w-full items-center gap-2 rounded-full bg-surface py-1.5 pr-1.5 pl-3 shadow-card lg:hidden">
-                  <span className="min-w-0 text-[13px] font-semibold">
-                    {project.name} · {money(project.price)}
-                  </span>
+                  <span className="min-w-0 text-[13px] font-semibold">{project.name}</span>
                   <button
                     type="button"
                     onClick={() => go(1)}
@@ -305,14 +271,14 @@ export function QuoteBuilder({
                   </button>
                 </div>
               )}
-              <ExtraList items={oneTimeExtras} qty={qty} priceOf={priceOf} money={money} onQuantity={setQuantity} />
+              <ExtraList items={oneTimeExtras} qty={qty} onQuantity={setQuantity} />
               {monthlyExtras.length > 0 && (
                 <>
                   <div className="flex flex-col gap-0.5 pt-2">
-                    <h3 className="text-base font-bold tracking-[-0.01em]">Pagos mensuales</h3>
+                    <h3 className="text-base font-bold tracking-[-0.01em]">Servicios mensuales</h3>
                     <p className="text-xs text-muted">Mantienen tu proyecto funcionando. Se pagan aparte, cada mes.</p>
                   </div>
-                  <ExtraList items={monthlyExtras} qty={qty} priceOf={priceOf} money={money} onQuantity={setQuantity} />
+                  <ExtraList items={monthlyExtras} qty={qty} onQuantity={setQuantity} />
                 </>
               )}
             </section>
@@ -384,10 +350,10 @@ export function QuoteBuilder({
                       Normal
                     </Chip>
                     <Chip active={urgent} onClick={() => setUrgent(true)}>
-                      Urgente +20%
+                      Urgente
                     </Chip>
                   </div>
-                  <span className="text-xs text-muted">Normal: 3–4 semanas. Urgente: la mitad del tiempo.</span>
+                  <span className="text-xs text-muted">Normal: 3–4 semanas. Urgente: la mitad del tiempo, con recargo.</span>
                 </div>
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs font-semibold text-ink-2">Nota</span>
@@ -432,18 +398,18 @@ export function QuoteBuilder({
           </div>
         </div>
 
-        {/* Right: the quote, always visible (computer) */}
+        {/* Right: what the client is asking for (computer) */}
         <aside className="hidden lg:sticky lg:top-6 lg:block">{summary}</aside>
       </main>
 
-      {/* Phone and iPad: bottom bar with the live total */}
+      {/* Phone and iPad: bottom bar with the current choice */}
       {step < 3 && (
         <div className="fixed inset-x-0 bottom-0 z-20 px-4 pb-5 md:px-8 lg:hidden">
-          <div className="mx-auto flex max-w-xl items-center justify-between rounded-full bg-ink py-1.5 pr-1.5 pl-5 shadow-float">
+          <div className="mx-auto flex max-w-xl items-center justify-between gap-3 rounded-full bg-ink py-1.5 pr-1.5 pl-5 shadow-float">
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[11px] text-nav-idle">Total estimado{extrasLabel ? ` · ${extrasLabel}` : ""}</span>
-              <span className="text-lg leading-tight font-bold tracking-[-0.02em] text-white tabular-nums">
-                {money(totals.total)}
+              <span className="truncate text-[11px] text-nav-idle">Tu selección</span>
+              <span className="truncate text-sm leading-tight font-semibold text-white">
+                {project ? `${project.name}${extrasLabel ? ` · ${extrasLabel}` : ""}` : "Elige un proyecto"}
               </span>
             </div>
             <button
@@ -470,8 +436,8 @@ export function QuoteBuilder({
           }
         >
           <p className="text-center text-sm leading-relaxed text-ink-2">
-            Vas a enviar tu información (nombre, negocio, correo y WhatsApp) junto con la cotización de{" "}
-            <b>{money(totals.total)}</b>. Quedará en estado <b>pendiente</b> hasta que la revise.
+            Vas a enviar tu información (nombre, negocio, correo y WhatsApp) junto con lo que elegiste. Quedará en estado{" "}
+            <b>pendiente</b> hasta que la revise.
           </p>
           {sendError && (
             <p role="alert" className="text-center text-sm font-medium text-[#C53030]">
@@ -512,7 +478,8 @@ export function QuoteBuilder({
           }
         >
           <p className="text-center text-sm leading-relaxed text-ink-2">
-            Tu cotización fue enviada y será revisada en un momento. Te escribo por WhatsApp al <b>{phone.trim()}</b>.
+            Tu cotización fue enviada y será revisada en un momento. Te escribo por WhatsApp al <b>{phone.trim()}</b> con el
+            precio.
           </p>
           <button type="button" data-autofocus onClick={reset} className={buttonClass("primary", "h-11 w-full text-sm")}>
             Listo
@@ -526,14 +493,10 @@ export function QuoteBuilder({
 function ExtraList({
   items,
   qty,
-  priceOf,
-  money,
   onQuantity,
 }: {
   items: BuilderItem[];
   qty: Record<string, number>;
-  priceOf: (e: BuilderItem) => number;
-  money: (cents: number) => string;
   onQuantity: (id: string, value: number) => void;
 }) {
   return (
@@ -541,18 +504,10 @@ function ExtraList({
       {items.map((e) => {
         const q = qty[e.id] ?? 0;
         const on = q > 0;
-        const price = priceOf(e);
-        const priceText =
-          e.unit === "EACH"
-            ? `${money(price)} c/u${on ? ` · ${money(price * q)}` : ""}`
-            : e.unit === "MONTHLY"
-              ? `${money(price)}/mes`
-              : `+${money(price)}`;
         const body = (
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-sm leading-snug font-bold break-words hyphens-auto">{e.name}</span>
             {e.description && <span className="text-xs leading-snug text-muted">{e.description}</span>}
-            <span className="text-xs font-semibold text-ink-2">{priceText}</span>
           </span>
         );
         const rowClass = cx(
@@ -586,15 +541,7 @@ function ExtraList({
   );
 }
 
-function Header({
-  settings,
-  currency,
-  onCurrency,
-}: {
-  settings: Settings;
-  currency: Currency;
-  onCurrency: (c: Currency) => void;
-}) {
+function Header({ settings }: { settings: Settings }) {
   return (
     <header className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 md:px-8 lg:py-5 xl:px-10">
       <div className="flex min-w-0 items-center gap-2.5">
@@ -604,41 +551,12 @@ function Header({
           <span className="truncate text-xs text-muted">{settings.ownerRole}</span>
         </span>
       </div>
-      <div className="flex shrink-0 items-center gap-4">
-        {settings.portfolioUrl && (
-          <a href={settings.portfolioUrl} className="hidden text-sm font-medium text-ink-2 hover:text-ink md:block">
-            Ver mi portafolio
-          </a>
-        )}
-        <CurrencySwitch currency={currency} onCurrency={onCurrency} />
-      </div>
+      {settings.portfolioUrl && (
+        <a href={settings.portfolioUrl} className="hidden shrink-0 text-sm font-medium text-ink-2 hover:text-ink md:block">
+          Ver mi portafolio
+        </a>
+      )}
     </header>
-  );
-}
-
-function CurrencySwitch({ currency, onCurrency }: { currency: Currency; onCurrency: (c: Currency) => void }) {
-  return (
-    <div className="flex rounded-full bg-chip p-[3px]" role="group" aria-label="Moneda">
-      {(
-        [
-          ["DOP", "RD$"],
-          ["USD", "US$"],
-        ] as const
-      ).map(([c, label]) => (
-        <button
-          key={c}
-          type="button"
-          aria-pressed={currency === c}
-          onClick={() => onCurrency(c)}
-          className={cx(
-            "rounded-full px-2.5 py-1 text-xs lg:px-3 lg:py-1.5 lg:text-[13px]",
-            currency === c ? "bg-surface font-semibold text-ink shadow-sm" : "font-medium text-muted",
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -710,15 +628,12 @@ function Stepper({
   );
 }
 
+/** What the client is asking for, without prices. */
 function Summary({
   project,
   extras,
   qty,
-  priceOf,
-  totals,
   urgent,
-  currency,
-  rate,
   canSend,
   onSend,
   formError,
@@ -726,51 +641,38 @@ function Summary({
   project: BuilderItem | null;
   extras: BuilderItem[];
   qty: Record<string, number>;
-  priceOf: (e: BuilderItem) => number;
-  totals: ReturnType<typeof computeTotals>;
   urgent: boolean;
-  currency: Currency;
-  rate: number;
   canSend: boolean;
   onSend: () => void;
   formError: string | null;
 }) {
-  const money = (n: number) => formatIn(currency, n, rate);
-  const other = currency === "DOP" ? formatUSD(totals.total) : formatDOP(totals.total, rate);
+  const oneTime = extras.filter((e) => e.unit !== "MONTHLY");
   const monthly = extras.filter((e) => e.unit === "MONTHLY");
   return (
     <div className="card flex flex-col gap-2.5 rounded-[20px] p-4 lg:gap-3 lg:p-5">
       <h3 className="text-base font-bold tracking-[-0.01em]">Tu cotización</h3>
       {!project && <p className="text-sm text-muted">Elige un tipo de proyecto para empezar.</p>}
-      {project && <Line label={project.name} value={money(project.price)} strong />}
-      {extras
-        .filter((e) => e.unit !== "MONTHLY")
-        .map((e) => (
-          <Line key={e.id} label={e.unit === "EACH" ? `${e.name} ×${qty[e.id]}` : e.name} value={money(priceOf(e) * qty[e.id])} />
-        ))}
-      {urgent && totals.urgentFee > 0 && <Line label="Plazo urgente (+20%)" value={money(totals.urgentFee)} />}
-      <hr className="border-line" />
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xs text-muted">Total estimado</span>
-        <span data-total className="text-2xl font-bold tracking-[-0.03em] tabular-nums lg:text-[32px]">
-          {money(totals.total)}
-        </span>
-        <span className="text-xs text-muted">
-          {currency === "DOP" ? "=" : "≈"} {other} · US$1 = RD${formatRate(rate)}
-        </span>
-      </div>
-      {project && monthly.length > 0 && (
-        <div className="flex flex-col gap-1.5 rounded-xl bg-bg px-3 py-2.5">
-          <div className="flex justify-between gap-3 text-[13px] font-semibold">
-            <span>Pago mensual</span>
-            <span className="tabular-nums">{money(totals.monthly)}/mes</span>
-          </div>
-          {monthly.map((e) => (
-            <div key={e.id} className="flex justify-between gap-3 text-xs text-muted">
-              <span>{e.name}</span>
-              <span className="tabular-nums">{money(priceOf(e))}</span>
-            </div>
+      {project && (
+        <ul className="flex flex-col gap-1.5 text-[13px] lg:text-sm">
+          <li className="font-semibold">{project.name}</li>
+          {oneTime.map((e) => (
+            <li key={e.id} className="flex items-start gap-2 text-ink-2">
+              <Check size={14} className="mt-0.5 shrink-0 text-accent-ink" />
+              {e.unit === "EACH" ? `${e.name} ×${qty[e.id]}` : e.name}
+            </li>
           ))}
+          {urgent && (
+            <li className="flex items-start gap-2 text-ink-2">
+              <Check size={14} className="mt-0.5 shrink-0 text-accent-ink" />
+              Plazo urgente
+            </li>
+          )}
+        </ul>
+      )}
+      {project && monthly.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-xl bg-bg px-3 py-2.5">
+          <span className="text-xs font-semibold">Cada mes</span>
+          <span className="text-xs text-muted">{monthly.map((e) => e.name).join(" · ")}</span>
         </div>
       )}
       <button type="button" onClick={onSend} className={buttonClass("primary", cx("mt-1 w-full", !canSend && "opacity-60"))}>
@@ -783,18 +685,9 @@ function Summary({
       ) : (
         <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted">
           <Info size={14} className="mt-px shrink-0" />
-          Precio de referencia. La reviso y te escribo por WhatsApp para confirmarte.
+          La reviso y te escribo por WhatsApp con el precio.
         </p>
       )}
-    </div>
-  );
-}
-
-function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex justify-between gap-3 text-[13px] lg:text-sm">
-      <span className={strong ? "font-semibold" : "text-ink-2"}>{label}</span>
-      <span className={cx("tabular-nums", strong ? "font-semibold" : "font-medium")}>{value}</span>
     </div>
   );
 }

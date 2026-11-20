@@ -1,7 +1,7 @@
 # Cotizador
 
 **Cotizaciones, facturas y cobros para freelancers de desarrollo de software.**
-Tus clientes arman su proyecto, ven el precio al instante en US$ o RD$ y te lo envían por WhatsApp.
+Tus clientes arman su proyecto y te lo envían; tú ves el estimado en US$ o RD$ y negocias el precio.
 Tú lo conviertes en cotización, factura y abonos desde un panel privado.
 
 **Pruébalo:** [cotizador-priscila.vercel.app](https://cotizador-priscila.vercel.app)
@@ -18,7 +18,7 @@ Tú lo conviertes en cotización, factura y abonos desde un panel privado.
 <p align="center">
   <img src="docs/screenshots/celular-1-proyecto.png" width="30%" alt="Elegir el tipo de proyecto" />
   &nbsp;
-  <img src="docs/screenshots/celular-2-extras.png" width="30%" alt="Agregar extras con el total en vivo" />
+  <img src="docs/screenshots/celular-2-extras.png" width="30%" alt="Agregar extras" />
   &nbsp;
   <img src="docs/screenshots/celular-3-propuesta.png" width="30%" alt="Datos y resumen antes de enviar por correo" />
 </p>
@@ -28,8 +28,8 @@ Tú lo conviertes en cotización, factura y abonos desde un panel privado.
 ### Para tus clientes: el cotizador público (`/`)
 
 - Eligen el tipo de proyecto (landing, página web, tienda online, sistema de reservas, menú digital con QR, portafolio, chatbot de WhatsApp, sistema de inventario, app móvil…) y marcan extras: páginas adicionales, pagos con Azul/CardNet/PayPal, correos corporativos, SEO, multiidioma, blog, logo…
-- **Pagos mensuales**: el mantenimiento y el hosting administrado van siempre incluidos (cada proyecto tiene su propio precio de mantenimiento); el soporte prioritario es opcional.
-- **El total se suma en vivo**, en **US$ o RD$**. Los pesos son la conversión exacta de los dólares con la tasa del día.
+- **Servicios mensuales**: el mantenimiento y el hosting administrado van siempre incluidos; el soporte prioritario es opcional.
+- **El cliente no ve precios**: solo elige lo que necesita. La página ni siquiera recibe los precios; el estimado se calcula en el servidor y lo ves tú en el panel.
 - Escogen el plazo (normal o urgente +20 %) y escriben su nombre, negocio, correo y WhatsApp. Todos son obligatorios y se validan: el nombre solo acepta letras.
 - Con **"Enviar cotización"** sale un aviso para confirmar. Al decir que sí, la cotización llega a tu panel en estado **Pendiente** y el cliente ve que fue enviada y será revisada. Luego tú le escribes por WhatsApp.
 - Va en 3 pasos (proyecto, extras, datos). En celular el total queda fijo abajo; en computadora los pasos van a la izquierda y la cotización a la derecha.
@@ -40,7 +40,7 @@ Tú lo conviertes en cotización, factura y abonos desde un panel privado.
 - **Cotizaciones**: editor con partidas del catálogo o libres, descuento, ITBIS 18 %, plazo urgente, fecha de entrega y el WhatsApp y correo del cliente. Cuando la aceptan, **registras el anticipo del 30 %** antes de empezar y se crea la factura con ese abono.
 - **Facturas**: estados automáticos (borrador, enviada, parcial, pagada, vencida), abonos validados que nunca pasan de lo pendiente, recordatorios por WhatsApp con vista previa y descarga en PDF.
 - **Clientes**: ficha con historial y saldo. **WhatsApp** abre el chat del cliente y **Correo** abre tu app de correo con el saludo y tu firma ya escritos.
-- **Catálogo**: tus servicios y precios **en dólares**, con el rango de mercado de referencia, el orden y la visibilidad. Es lo que ve el cliente en el cotizador.
+- **Catálogo**: tus servicios y precios **en dólares**, con el rango de mercado de referencia, el mantenimiento de cada proyecto, el orden y la visibilidad. El cliente ve los nombres y descripciones; los precios solo tú.
 - **Ajustes**: tu WhatsApp, los datos de facturación, la tasa del dólar (se actualiza sola cada 6 horas) y si quieres ver el panel **en US$ o en RD$**.
 
 ## Cómo está hecho
