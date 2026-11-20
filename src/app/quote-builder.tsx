@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowRight, Check, ChevronLeft, Info, Minus, Plus, Send } from "lucide-react";
+import { ArrowRight, Check, ChevronLeft, Eye, Info, Minus, Plus, Send } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/modal";
 import { ProfilePhoto } from "@/components/profile-photo";
 import { buttonClass, Chip, cx, inputClass, Toggle } from "@/components/ui";
 import { businessNameError, emailError, personNameError, phoneError, tidy } from "@/lib/validation";
 import { submitProposal } from "./actions";
+import { ServicePreview } from "./preview/service-preview";
 
 // The public builder never shows (or even receives) prices: the client picks what they
 // need and the quote reaches the admin with its estimate, computed on the server.
@@ -67,6 +68,8 @@ export function QuoteBuilder({
   const [modal, setModal] = useState<"confirm" | "sent" | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Example of a service (Mac / iPhone pop-out).
+  const [preview, setPreview] = useState<{ item: BuilderItem; kind: "PROJECT" | "EXTRA" } | null>(null);
 
   const project = projects.find((p) => p.id === projectId) ?? null;
   const oneTimeExtras = extras.filter((e) => e.unit !== "MONTHLY");
@@ -233,24 +236,30 @@ export function QuoteBuilder({
                 {projects.map((p) => {
                   const selected = p.id === projectId;
                   return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => setProjectId(selected ? null : p.id)}
-                      className={cx(
-                        "relative flex flex-col gap-1 rounded-[18px] border-2 bg-surface p-3.5 pr-8 text-left shadow-card transition-colors",
-                        selected ? "border-accent" : "border-transparent hover:border-accent/30",
-                      )}
-                    >
-                      <span className="text-sm leading-snug font-bold [overflow-wrap:anywhere]">{p.name}</span>
-                      {p.description && <span className="text-xs leading-snug text-muted">{p.description}</span>}
-                      {selected && (
-                        <span className="absolute top-3 right-3 grid size-5 place-items-center rounded-full bg-accent text-white">
-                          <Check size={12} strokeWidth={3} />
-                        </span>
-                      )}
-                    </button>
+                    <div key={p.id} className="relative flex">
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setProjectId(selected ? null : p.id)}
+                        className={cx(
+                          "relative flex flex-1 flex-col gap-1 rounded-[18px] border-2 bg-surface p-3.5 pr-8 pb-12 text-left shadow-card transition-colors",
+                          selected ? "border-accent" : "border-transparent hover:border-accent/30",
+                        )}
+                      >
+                        <span className="text-sm leading-snug font-bold [overflow-wrap:anywhere]">{p.name}</span>
+                        {p.description && <span className="text-xs leading-snug text-muted">{p.description}</span>}
+                        {selected && (
+                          <span className="absolute top-3 right-3 grid size-5 place-items-center rounded-full bg-accent text-white">
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                        )}
+                      </button>
+                      <PreviewButton
+                        label={p.name}
+                        onClick={() => setPreview({ item: p, kind: "PROJECT" })}
+                        className="absolute bottom-3 left-3.5"
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -271,14 +280,28 @@ export function QuoteBuilder({
                   </button>
                 </div>
               )}
-              <ExtraList items={oneTimeExtras} qty={qty} onQuantity={setQuantity} />
+              <p className="flex items-center gap-1.5 text-xs text-muted">
+                <Eye size={14} className="shrink-0 text-accent-ink" />
+                Toca el ojito para ver un ejemplo de cada extra en computadora y celular.
+              </p>
+              <ExtraList
+                items={oneTimeExtras}
+                qty={qty}
+                onQuantity={setQuantity}
+                onPreview={(item) => setPreview({ item, kind: "EXTRA" })}
+              />
               {monthlyExtras.length > 0 && (
                 <>
                   <div className="flex flex-col gap-0.5 pt-2">
                     <h3 className="text-base font-bold tracking-[-0.01em]">Servicios mensuales</h3>
                     <p className="text-xs text-muted">Mantienen tu proyecto funcionando. Se pagan aparte, cada mes.</p>
                   </div>
-                  <ExtraList items={monthlyExtras} qty={qty} onQuantity={setQuantity} />
+                  <ExtraList
+                    items={monthlyExtras}
+                    qty={qty}
+                    onQuantity={setQuantity}
+                    onPreview={(item) => setPreview({ item, kind: "EXTRA" })}
+                  />
                 </>
               )}
             </section>
@@ -424,6 +447,13 @@ export function QuoteBuilder({
         </div>
       )}
 
+      {preview && (
+        <ServicePreview
+          item={{ name: preview.item.name, description: preview.item.description, kind: preview.kind }}
+          onClose={() => setPreview(null)}
+        />
+      )}
+
       {modal === "confirm" && (
         <Modal
           title="¿Enviar tu cotización?"
@@ -494,10 +524,12 @@ function ExtraList({
   items,
   qty,
   onQuantity,
+  onPreview,
 }: {
   items: BuilderItem[];
   qty: Record<string, number>;
   onQuantity: (id: string, value: number) => void;
+  onPreview: (item: BuilderItem) => void;
 }) {
   return (
     <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
@@ -510,14 +542,16 @@ function ExtraList({
             {e.description && <span className="text-xs leading-snug text-muted">{e.description}</span>}
           </span>
         );
+        const eye = <PreviewButton label={e.name} compact onClick={() => onPreview(e)} />;
         const rowClass = cx(
-          "flex items-center gap-3 rounded-[18px] border-[1.5px] bg-surface p-3 text-left shadow-card transition-colors",
+          "flex items-center gap-2.5 rounded-[18px] border-[1.5px] bg-surface p-3 text-left shadow-card transition-colors",
           on ? "border-accent" : "border-transparent",
         );
         if (e.unit === "EACH")
           return (
             <div key={e.id} className={rowClass}>
               {body}
+              {eye}
               <Stepper value={q} min={e.required ? 1 : 0} label={e.name} onChange={(v) => onQuantity(e.id, v)} />
             </div>
           );
@@ -525,6 +559,7 @@ function ExtraList({
           return (
             <div key={e.id} className={rowClass}>
               {body}
+              {eye}
               <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-ink">
                 Incluido
               </span>
@@ -533,11 +568,45 @@ function ExtraList({
         return (
           <div key={e.id} className={cx(rowClass, "cursor-pointer")} onClick={() => onQuantity(e.id, on ? 0 : 1)}>
             {body}
+            {eye}
             <Toggle checked={on} label={e.name} />
           </div>
         );
       })}
     </div>
+  );
+}
+
+/** Opens the example of a service (Mac / iPhone pop-out). */
+function PreviewButton({
+  label,
+  onClick,
+  compact,
+  className,
+}: {
+  label: string;
+  onClick: () => void;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`Ver ejemplo de ${label}`}
+      title="Ver ejemplo"
+      onClick={(ev) => {
+        ev.stopPropagation();
+        onClick();
+      }}
+      className={cx(
+        "group/eye inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-accent-soft font-semibold text-accent-ink transition-colors hover:bg-accent hover:text-white",
+        compact ? "size-8" : "h-7 px-2.5 text-xs",
+        className,
+      )}
+    >
+      <Eye size={compact ? 16 : 14} strokeWidth={2.2} />
+      {!compact && "Ver ejemplo"}
+    </button>
   );
 }
 

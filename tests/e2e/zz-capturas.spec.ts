@@ -12,7 +12,7 @@ test("cotizador en celular", async ({ page }) => {
   await page.goto("/");
   // Hide the Next.js development badge so it does not cover the screenshots.
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
-  await page.getByRole("button", { name: /Página web/ }).click();
+  await page.getByRole("button", { name: /^Página web/ }).click();
   await page.waitForLoadState("networkidle");
   await page.screenshot({ path: out("celular-1-proyecto") });
 

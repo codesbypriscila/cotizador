@@ -34,7 +34,7 @@ test.describe("cliente en computadora", () => {
       "Sistema de inventario",
       "Automatizaciones/chatbot de WhatsApp",
     ])
-      await expect(page.getByRole("button", { name: new RegExp(name.replace(/[/()]/g, "\\$&")) })).toBeVisible();
+      await expect(page.getByRole("button", { name: new RegExp("^" + name.replace(/[/()]/g, "\\$&")) })).toBeVisible();
     const app = page.getByRole("button", { name: /^App móvil/ });
     await expect(app).toContainText("iOS y Android");
     await expect(app).not.toContainText(/\$|\d/);

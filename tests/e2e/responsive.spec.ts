@@ -18,7 +18,7 @@ for (const width of WIDTHS) {
     // Public quote builder, every step
     await page.goto("/");
     await check(page, "cotizador · paso 1", report);
-    await page.getByRole("button", { name: /Página web/ }).click();
+    await page.getByRole("button", { name: /^Página web/ }).click();
     await check(page, "cotizador · proyecto elegido", report);
     await page.getByRole("button", { name: "Siguiente" }).click();
     await page.getByRole("button", { name: "Agregar Páginas adicionales" }).click();

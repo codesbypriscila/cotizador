@@ -9,7 +9,7 @@ test.describe("cotizador: datos obligatorios", () => {
     page.on("request", (r) => r.method() === "POST" && saves.push(r.url()));
 
     await page.goto("/");
-    await page.getByRole("button", { name: /Página web/ }).click();
+    await page.getByRole("button", { name: /^Página web/ }).click();
     await page.getByRole("button", { name: "Siguiente" }).click();
     await page.getByRole("button", { name: "Siguiente" }).click();
 
